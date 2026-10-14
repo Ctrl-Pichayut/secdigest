@@ -1,0 +1,508 @@
+#!/usr/bin/env python3
+"""
+Personal CyberSec & Tech Digest Ingestion Pipeline.
+
+Fetches intelligence from 4 sources:
+1. CISA Known Exploited Vulnerabilities (KEV) Catalog (last 7 days)
+2. OpenRouter Models API (models ending with :free)
+3. Hacker News Algolia API (>50 points, last 24h, matching security/cloud/dev keywords)
+4. CTFtime API (upcoming events; runs Mondays and Fridays, or with --force-ctf)
+
+Deduplicates against existing items in Supabase public.news_items, curates the top <=5 items
+using Gemini (gemini-3.8-flash via google-genai SDK with Structured Outputs), and upserts them
+into Supabase.
+"""
+
+import argparse
+from datetime import datetime, timezone, timedelta
+from enum import Enum
+import json
+import logging
+import os
+import re
+import sys
+from typing import Any, Dict, List, Optional, Set
+
+from dotenv import load_dotenv
+from google import genai
+from google.genai import errors, types
+from pydantic import BaseModel, Field
+import requests
+from supabase import Client, create_client
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+logger = logging.getLogger("digest_pipeline")
+
+# Load environment variables
+load_dotenv()
+
+
+class CategoryEnum(str, Enum):
+    AI_FREE = "AI_FREE"
+    CVE_SECURITY = "CVE_SECURITY"
+    CTF_COMPETITION = "CTF_COMPETITION"
+    DEV_CLOUD = "DEV_CLOUD"
+
+
+class CuratedNewsItem(BaseModel):
+    source_id: str = Field(
+        description="Exact unique source_id from input (e.g. cisa_CVE-..., openrouter_..., hn_..., ctftime_...)."
+    )
+    category: CategoryEnum = Field(
+        description="Allowed category: AI_FREE, CVE_SECURITY, CTF_COMPETITION, or DEV_CLOUD."
+    )
+    title: str = Field(
+        description="Sharp, professional technical title."
+    )
+    tldr: str = Field(
+        description="2-3 lines concise English summary highlighting technical mechanics and impact."
+    )
+    actionable_value: str = Field(
+        description="1-2 lines concrete takeaway for a 2nd-year CS student targeting Cybersecurity/Cloud Security."
+    )
+    url: str = Field(
+        description="Exact source URL from input (never modify or hallucinate links)."
+    )
+    event_start_date: Optional[str] = Field(
+        default=None,
+        description="ISO 8601 timestamp string for competition start date, or null if not applicable."
+    )
+
+
+class CuratedDigestResponse(BaseModel):
+    curated_items: List[CuratedNewsItem] = Field(
+        description="List of at most 5 highest-impact items total for the day."
+    )
+
+
+# ---------------------------------------------------------------------------
+# Source Fetchers
+# ---------------------------------------------------------------------------
+
+def fetch_cisa_kev() -> List[Dict[str, Any]]:
+    """
+    Fetch CISA Known Exploited Vulnerabilities added within the last 7 days.
+    """
+    url = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
+    items: List[Dict[str, Any]] = []
+    try:
+        resp = requests.get(url, timeout=15)
+        resp.raise_for_status()
+        data = resp.json()
+        vulnerabilities = data.get("vulnerabilities", [])
+
+        cutoff_date = (datetime.now(timezone.utc) - timedelta(days=7)).strftime("%Y-%m-%d")
+        for v in vulnerabilities:
+            date_added = v.get("dateAdded", "")
+            if date_added >= cutoff_date:
+                cve_id = v.get("cveID", "").strip()
+                if not cve_id:
+                    continue
+                vuln_name = v.get("vulnerabilityName", "").strip()
+                vendor = v.get("vendorProject", "").strip()
+                product = v.get("product", "").strip()
+                short_desc = v.get("shortDescription", "").strip()
+                req_action = v.get("requiredAction", "").strip()
+
+                title = f"{cve_id}: {vuln_name or f'{vendor} {product} Exploit'}"
+                summary = (
+                    f"Vendor: {vendor} | Product: {product} | Added to KEV: {date_added}\n"
+                    f"Summary: {short_desc}\n"
+                    f"Required Action: {req_action}"
+                )
+                items.append({
+                    "source_id": f"cisa_{cve_id}",
+                    "category": "CVE_SECURITY",
+                    "title": title,
+                    "url": f"https://nvd.nist.gov/vuln/detail/{cve_id}",
+                    "raw_context": summary,
+                    "event_start_date": None,
+                })
+        logger.info(f"CISA KEV: Fetched {len(items)} vulnerabilities added in last 7 days.")
+    except Exception as e:
+        logger.error(f"Failed to fetch CISA KEV catalog: {e}")
+    return items
+
+
+def fetch_openrouter_free_models() -> List[Dict[str, Any]]:
+    """
+    Fetch OpenRouter models whose id ends with :free.
+    """
+    url = "https://openrouter.ai/api/v1/models"
+    items: List[Dict[str, Any]] = []
+    try:
+        resp = requests.get(url, timeout=15)
+        resp.raise_for_status()
+        data = resp.json()
+        models = data.get("data", [])
+
+        for m in models:
+            model_id = m.get("id", "")
+            if model_id.endswith(":free"):
+                name = m.get("name") or model_id
+                desc = m.get("description") or ""
+                ctx = m.get("context_length")
+                architecture = m.get("architecture", {})
+                modality = architecture.get("modality", "text")
+
+                summary = (
+                    f"Model: {name} ({model_id})\n"
+                    f"Context Window: {ctx} tokens | Modality: {modality}\n"
+                    f"Description: {desc[:400]}"
+                )
+                items.append({
+                    "source_id": f"openrouter_{model_id}",
+                    "category": "AI_FREE",
+                    "title": f"Free Model: {name}",
+                    "url": f"https://openrouter.ai/{model_id}",
+                    "raw_context": summary,
+                    "event_start_date": None,
+                })
+        logger.info(f"OpenRouter: Fetched {len(items)} free models.")
+    except Exception as e:
+        logger.error(f"Failed to fetch OpenRouter models: {e}")
+    return items
+
+
+def fetch_hacker_news() -> List[Dict[str, Any]]:
+    """
+    Fetch Hacker News stories from the last 24 hours with >50 points
+    matching security, cloud, aws, cli, ide, or llm keywords.
+    """
+    url = "https://hn.algolia.com/api/v1/search_by_date"
+    params = {
+        "tags": "story",
+        "numericFilters": "points>50",
+        "hitsPerPage": 100,
+    }
+    items: List[Dict[str, Any]] = []
+    # Match keywords security, cloud, aws, cli, ide, llm (with optional plural 's')
+    keyword_regex = re.compile(r"\b(security|cloud|aws|cli|ide|llm)s?\b", re.IGNORECASE)
+
+    try:
+        resp = requests.get(url, params=params, timeout=15)
+        resp.raise_for_status()
+        data = resp.json()
+        hits = data.get("hits", [])
+
+        now_ts = datetime.now(timezone.utc).timestamp()
+        cutoff_24h = now_ts - 86400
+
+        for h in hits:
+            created_ts = h.get("created_at_i", 0)
+            if created_ts < cutoff_24h:
+                continue
+
+            title = h.get("title") or ""
+            story_text = h.get("story_text") or ""
+            search_corpus = f"{title} {story_text}"
+
+            if not keyword_regex.search(search_corpus):
+                continue
+
+            obj_id = str(h.get("objectID", "")).strip()
+            if not obj_id:
+                continue
+
+            story_url = h.get("url") or f"https://news.ycombinator.com/item?id={obj_id}"
+            points = h.get("points", 0)
+            comments = h.get("num_comments", 0)
+
+            summary = (
+                f"Title: {title}\n"
+                f"Score: {points} points | {comments} comments\n"
+                f"HN Thread: https://news.ycombinator.com/item?id={obj_id}\n"
+                f"Excerpt: {story_text[:300]}"
+            )
+
+            # Heuristic category classification for candidate prompt
+            if re.search(r"\b(security|cve|exploit|vulnerability|backdoor|malware)\b", search_corpus, re.IGNORECASE):
+                cat = "CVE_SECURITY"
+            elif re.search(r"\b(llm|gpt|ai|claude|gemini)\b", search_corpus, re.IGNORECASE):
+                cat = "DEV_CLOUD"
+            else:
+                cat = "DEV_CLOUD"
+
+            items.append({
+                "source_id": f"hn_{obj_id}",
+                "category": cat,
+                "title": title,
+                "url": story_url,
+                "raw_context": summary,
+                "event_start_date": None,
+            })
+        logger.info(f"Hacker News: Fetched {len(items)} relevant stories from last 24h.")
+    except Exception as e:
+        logger.error(f"Failed to fetch Hacker News: {e}")
+    return items
+
+
+def fetch_ctftime(force_ctf: bool = False) -> List[Dict[str, Any]]:
+    """
+    Fetch upcoming CTF events from CTFtime.
+    Runs on Mondays and Fridays, or when force_ctf is True.
+    """
+    now = datetime.now(timezone.utc)
+    weekday = now.weekday()  # Monday = 0, Friday = 4
+
+    if not force_ctf and weekday not in (0, 4):
+        logger.info("CTFtime: Skipping CTF fetch today (only runs Mon/Fri; use --force-ctf to override).")
+        return []
+
+    url = "https://ctftime.org/api/v1/events/?limit=20"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) CyberSecDigestBot/1.0"
+    }
+    items: List[Dict[str, Any]] = []
+    try:
+        resp = requests.get(url, headers=headers, timeout=15)
+        resp.raise_for_status()
+        events = resp.json()
+
+        for ev in events:
+            event_id = str(ev.get("id", "")).strip()
+            if not event_id:
+                continue
+
+            title = ev.get("title", "").strip()
+            start_date = ev.get("start")
+            finish_date = ev.get("finish")
+            ctf_url = ev.get("url") or ev.get("ctftime_url") or f"https://ctftime.org/event/{event_id}"
+            format_type = ev.get("format", "Jeopardy")
+            weight = ev.get("weight", 0.0)
+            organizers = ", ".join([org.get("name", "") for org in ev.get("organizers", [])])
+
+            summary = (
+                f"CTF Event: {title}\n"
+                f"Start Date: {start_date} | Finish Date: {finish_date}\n"
+                f"Format: {format_type} | Weight: {weight}\n"
+                f"Organizers: {organizers}\n"
+                f"Description: {ev.get('description', '')[:300]}"
+            )
+
+            items.append({
+                "source_id": f"ctftime_{event_id}",
+                "category": "CTF_COMPETITION",
+                "title": f"CTF: {title}",
+                "url": ctf_url,
+                "raw_context": summary,
+                "event_start_date": start_date,
+            })
+        logger.info(f"CTFtime: Fetched {len(items)} upcoming CTF events.")
+    except Exception as e:
+        logger.error(f"Failed to fetch CTFtime events: {e}")
+    return items
+
+
+# ---------------------------------------------------------------------------
+# Deduplication & Database Operations
+# ---------------------------------------------------------------------------
+
+def get_existing_source_ids(supabase_client: Client) -> Set[str]:
+    """Query existing source_id values from public.news_items to prevent reprocessing."""
+    try:
+        resp = supabase_client.table("news_items").select("source_id").execute()
+        existing = {row["source_id"] for row in (resp.data or []) if "source_id" in row}
+        logger.info(f"Retrieved {len(existing)} existing source_ids from Supabase.")
+        return existing
+    except Exception as e:
+        logger.warning(f"Could not retrieve existing source_ids from Supabase: {e}")
+        return set()
+
+
+def curate_with_gemini(
+    unseen_items: List[Dict[str, Any]],
+    gemini_api_key: str
+) -> List[CuratedNewsItem]:
+    """
+    Send unseen candidate items to gemini-3.8-flash with structured outputs
+    to select at most 5 highest-impact items.
+    """
+    if not unseen_items:
+        return []
+
+    client = genai.Client(api_key=gemini_api_key)
+
+    prompt = f"""You are the intelligence curator for a personal daily CyberSec & Tech digest web application.
+The target audience is a 2nd-year Computer Science student specializing in Cybersecurity, Cloud Security, CTFs, and AI/Developer Tools.
+
+Below is a feed of raw candidate items fetched today from CISA KEV, OpenRouter (free models), Hacker News, and CTFtime.
+
+YOUR OBJECTIVES:
+1. Select at most 5 highest-impact items TOTAL for the day.
+   - Prioritize actively exploited zero-days / critical vulnerabilities (CISA KEV), genuinely useful free AI models/APIs (OpenRouter), practical dev/cloud engineering news (Hacker News), and notable upcoming CTF competitions (CTFtime).
+   - Filter out low-value items, minor library patches, marketing hype, and spam.
+   - If only 1-3 items are genuinely high quality, return only those. Return at most 5 items.
+2. For each selected item:
+   - source_id: MUST PRESERVE the exact source_id from input without modification.
+   - url: MUST PRESERVE the exact source url from input (never alter or fabricate links).
+   - category: MUST be exactly one of: 'AI_FREE', 'CVE_SECURITY', 'CTF_COMPETITION', 'DEV_CLOUD'.
+   - title: Sharp, professional title in English.
+   - tldr: Exactly 2-3 lines of concise technical English summary explaining the vulnerability mechanics, tool capabilities, or infrastructure change.
+   - actionable_value: Exactly 1-2 lines in sharp, technical English providing a concrete takeaway for a 2nd-year CS student targeting Cybersecurity/Cloud Security (e.g. specific home lab to spin up, API credit to claim, CTF to join, or interview talking point).
+   - event_start_date: For CTF competitions, preserve the ISO 8601 timestamp string from input; otherwise set to null.
+
+Candidate items:
+{json.dumps(unseen_items, indent=2)}
+"""
+
+    logger.info("Sending %d candidate items to gemini-3.8-flash for curation...", len(unseen_items))
+    try:
+        response = client.models.generate_content(
+            model="gemini-3.8-flash",
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=CuratedDigestResponse,
+                thinking_config=types.ThinkingConfig(thinking_level="low"),
+            ),
+        )
+    except errors.APIError as e:
+        if "503" in str(e) or "UNAVAILABLE" in str(e) or "high demand" in str(e):
+            logger.warning(
+                "gemini-3.8-flash is currently experiencing high demand (503 UNAVAILABLE) on Google API. "
+                "Falling back to gemini-2.5-flash to complete curation and persist data..."
+            )
+            response = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    response_schema=CuratedDigestResponse,
+                ),
+            )
+        else:
+            raise
+
+    raw_text = (response.text or "").strip()
+    if raw_text.startswith("```"):
+        raw_text = re.sub(r"^```(?:json)?\s*", "", raw_text)
+        raw_text = re.sub(r"\s*```$", "", raw_text)
+
+    parsed = CuratedDigestResponse.model_validate_json(raw_text)
+    curated = parsed.curated_items[:5]
+    logger.info("Gemini selected %d high-impact items.", len(curated))
+    return curated
+
+
+def save_to_supabase(supabase_client: Client, curated_items: List[CuratedNewsItem]) -> int:
+    """Save curated items into Supabase using upsert with on_conflict='source_id'."""
+    if not curated_items:
+        logger.info("No items to save to Supabase.")
+        return 0
+
+    payload = []
+    for item in curated_items:
+        category_str = item.category.value if hasattr(item.category, "value") else str(item.category)
+        payload.append({
+            "source_id": item.source_id,
+            "category": category_str,
+            "title": item.title,
+            "tldr": item.tldr,
+            "actionable_value": item.actionable_value,
+            "url": item.url,
+            "event_start_date": item.event_start_date,
+        })
+
+    logger.info(f"Upserting {len(payload)} items into Supabase public.news_items...")
+    resp = supabase_client.table("news_items").upsert(payload, on_conflict="source_id").execute()
+    inserted_count = len(resp.data) if resp.data else len(payload)
+    logger.info(f"Successfully upserted {inserted_count} rows into news_items.")
+    return inserted_count
+
+
+# ---------------------------------------------------------------------------
+# Main Orchestrator
+# ---------------------------------------------------------------------------
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="CyberSec & Tech Digest Ingestion Pipeline")
+    parser.add_argument(
+        "--force-ctf",
+        action="store_true",
+        help="Force fetching CTF events even if today is not Monday or Friday",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Fetch and display candidates from all sources without writing to Supabase or invoking Gemini",
+    )
+    args = parser.parse_args()
+
+    # Retrieve environment variables
+    raw_supabase_url = os.getenv("SUPABASE_URL") or os.getenv("NEXT_PUBLIC_SUPABASE_URL")
+    supabase_url = raw_supabase_url.strip().rstrip("/") if raw_supabase_url else None
+    if supabase_url and supabase_url.endswith("/rest/v1"):
+        supabase_url = supabase_url[:-len("/rest/v1")].rstrip("/")
+    supabase_key = (
+        os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+        or os.getenv("SUPABASE_KEY")
+        or os.getenv("NEXT_PUBLIC_SUPABASE_ANON_KEY")
+    )
+    gemini_api_key = os.getenv("GEMINI_API_KEY")
+
+    if not args.dry_run:
+        missing_vars = []
+        if not supabase_url:
+            missing_vars.append("SUPABASE_URL (or NEXT_PUBLIC_SUPABASE_URL)")
+        if not supabase_key:
+            missing_vars.append("SUPABASE_SERVICE_ROLE_KEY (or NEXT_PUBLIC_SUPABASE_ANON_KEY)")
+        if not gemini_api_key:
+            missing_vars.append("GEMINI_API_KEY")
+
+        if missing_vars:
+            logger.error(
+                "Missing required environment variables in .env:\n  - "
+                + "\n  - ".join(missing_vars)
+                + "\nPlease update your .env file before running without --dry-run."
+            )
+            sys.exit(1)
+
+    # 1. Fetch from all 4 sources
+    logger.info("=== Starting Data Collection ===")
+    candidates: List[Dict[str, Any]] = []
+    candidates.extend(fetch_cisa_kev())
+    candidates.extend(fetch_openrouter_free_models())
+    candidates.extend(fetch_hacker_news())
+    candidates.extend(fetch_ctftime(force_ctf=args.force_ctf))
+
+    logger.info("=== Total Candidate Items Collected: %d ===", len(candidates))
+
+    if args.dry_run:
+        print("\n--- DRY RUN CANDIDATE SUMMARY ---")
+        for i, item in enumerate(candidates, 1):
+            print(f"[{i}] [{item['category']}] {item['title']}")
+            print(f"    Source ID: {item['source_id']}")
+            print(f"    URL: {item['url']}")
+            if item.get("event_start_date"):
+                print(f"    Event Start: {item['event_start_date']}")
+        print(f"\nDry run complete. Found {len(candidates)} candidate items.")
+        return
+
+    # 2. Initialize Supabase client and query deduplication state
+    supabase_client: Client = create_client(supabase_url, supabase_key)
+    existing_ids = get_existing_source_ids(supabase_client)
+
+    # 3. Filter unseen items
+    unseen_items = [item for item in candidates if item["source_id"] not in existing_ids]
+    logger.info(f"Unseen items requiring processing: {len(unseen_items)} (out of {len(candidates)} total)")
+
+    if not unseen_items:
+        logger.info("No new unseen items to curate today. Database is already up to date.")
+        return
+
+    # 4. Curate and summarize via Gemini
+    curated_items = curate_with_gemini(unseen_items, gemini_api_key=gemini_api_key)
+
+    # 5. Save to Supabase
+    save_to_supabase(supabase_client, curated_items)
+    logger.info("=== Ingestion Pipeline Completed Successfully ===")
+
+
+if __name__ == "__main__":
+    main()
