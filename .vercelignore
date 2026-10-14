@@ -1,0 +1,4 @@
+.venv
+scripts
+supabase_schema.sql
+*.py
