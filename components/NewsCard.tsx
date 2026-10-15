@@ -1,7 +1,7 @@
 'use client';
 
-import React from 'react';
-import { motion } from 'framer-motion';
+import React, { useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { ExternalLink, Bookmark, CheckCircle2 } from 'lucide-react';
 import { NewsItem } from '@/lib/types';
 
@@ -9,6 +9,7 @@ interface NewsCardProps {
   item: NewsItem;
   onToggleBookmark: (id: string, currentState: boolean) => void;
   onToggleRead: (id: string, currentState: boolean) => void;
+  globalThai?: boolean;
 }
 
 export function getCtfCountdown(startDateStr: string | null): string | null {
@@ -37,8 +38,12 @@ export function getCtfCountdown(startDateStr: string | null): string | null {
   }
 }
 
-export default function NewsCard({ item, onToggleBookmark, onToggleRead }: NewsCardProps) {
+export default function NewsCard({ item, onToggleBookmark, onToggleRead, globalThai = false }: NewsCardProps) {
+  const [cardLang, setCardLang] = useState<'EN' | 'TH' | null>(null);
   const countdown = getCtfCountdown(item.event_start_date);
+
+  const hasThai = Boolean(item.tldr_th);
+  const isThai = hasThai && (cardLang !== null ? cardLang === 'TH' : globalThai);
 
   const categoryMeta = {
     AI_FREE: {
@@ -84,7 +89,7 @@ export default function NewsCard({ item, onToggleBookmark, onToggleRead }: NewsC
         item.is_read ? 'opacity-60 saturate-[0.85]' : 'opacity-100'
       }`}
     >
-      {/* Category & Status Top Bar */}
+      {/* Category, Status & Language Top Bar */}
       <div className="flex items-center justify-between gap-2 mb-3">
         <div className="flex items-center gap-2 flex-wrap">
           <span
@@ -104,6 +109,24 @@ export default function NewsCard({ item, onToggleBookmark, onToggleRead }: NewsC
               ⏳ {countdown}
             </span>
           )}
+
+          {/* Per-Card Thai Translation Toggle Button */}
+          {hasThai && (
+            <motion.button
+              type="button"
+              data-testid={`btn-lang-${item.id}`}
+              onClick={() => setCardLang(isThai ? 'EN' : 'TH')}
+              whileTap={{ scale: 0.92 }}
+              className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold border transition-all cursor-pointer ${
+                isThai
+                  ? 'bg-rose-500 text-white border-rose-600 shadow-xs'
+                  : 'bg-white/90 text-stone-700 hover:text-stone-900 border-stone-200/90 shadow-2xs'
+              }`}
+              aria-label="Toggle language"
+            >
+              <span>{isThai ? '🇬🇧 EN' : '🇹🇭 TH'}</span>
+            </motion.button>
+          )}
         </div>
 
         {item.is_bookmarked && (
@@ -119,20 +142,57 @@ export default function NewsCard({ item, onToggleBookmark, onToggleRead }: NewsC
         {item.title}
       </h2>
 
-      {/* TLDR Summary */}
-      <p className="text-xs sm:text-sm text-slate-700 leading-relaxed mb-3.5 font-normal">
-        {item.tldr}
-      </p>
+      {/* TLDR Summary (Instant swap with animation) */}
+      <AnimatePresence mode="wait">
+        <motion.p
+          key={isThai ? 'th-tldr' : 'en-tldr'}
+          initial={{ opacity: 0, y: 3 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -3 }}
+          transition={{ duration: 0.18 }}
+          className="text-xs sm:text-sm text-slate-700 leading-relaxed mb-3.5 font-normal"
+        >
+          {isThai && item.tldr_th ? item.tldr_th : item.tldr}
+        </motion.p>
+      </AnimatePresence>
 
       {/* Redesigned Takeaway Callout */}
       <div className={`rounded-2xl p-3.5 mb-4 border shadow-xs transition-colors ${categoryMeta.takeawayBox}`}>
         <div className={`flex items-center gap-1.5 text-xs font-bold tracking-tight mb-1.5 ${categoryMeta.takeawayLabel}`}>
-          <span>💡 Quick Takeaway</span>
+          <span>{isThai ? '💡 สรุปสั้นๆ ว่าทำไมควรรู้' : '💡 Quick Takeaway'}</span>
         </div>
         <p className="text-xs sm:text-[13px] font-medium leading-relaxed">
-          {item.actionable_value}
+          {isThai && item.actionable_value_th ? item.actionable_value_th : item.actionable_value}
         </p>
       </div>
+
+      {/* Tech Jargon Glossary Box (When in Thai mode) */}
+      <AnimatePresence>
+        {isThai && item.tech_terms_th && item.tech_terms_th.length > 0 && (
+          <motion.div
+            data-testid={`tech-terms-${item.id}`}
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.2 }}
+            className="rounded-2xl p-3.5 mb-4 bg-white/95 border border-stone-200/90 shadow-2xs overflow-hidden"
+          >
+            <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800 mb-2">
+              <span>🧠 ศัพท์เทคนิคในข่าวนี้</span>
+            </div>
+            <ul className="space-y-1.5 text-xs text-slate-700">
+              {item.tech_terms_th.map((termObj, idx) => (
+                <li key={idx} className="leading-snug">
+                  <span className="font-extrabold text-slate-900 bg-stone-100 px-1.5 py-0.5 rounded text-[11px] mr-1.5 border border-stone-200">
+                    {termObj.term}
+                  </span>
+                  <span>{termObj.meaning}</span>
+                </li>
+              ))}
+            </ul>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Interactive Social Action Bar */}
       <div className="flex items-center justify-between gap-2 pt-3 border-t border-stone-200/80">

@@ -23,6 +23,7 @@ export default function HomePage() {
   const [error, setError] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<FilterCategory>('ALL');
   const [readDrawerOpen, setReadDrawerOpen] = useState<boolean>(false);
+  const [globalThai, setGlobalThai] = useState<boolean>(false);
 
   // Load news items from Supabase
   const loadNews = useCallback(async (isRefresh = false) => {
@@ -186,6 +187,23 @@ export default function HomePage() {
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Global Language Toggle */}
+            <motion.button
+              type="button"
+              data-testid="btn-global-lang"
+              onClick={() => setGlobalThai((prev) => !prev)}
+              whileTap={{ scale: 0.92 }}
+              whileHover={{ y: -1 }}
+              className={`px-2.5 py-1.5 rounded-xl text-xs font-bold border transition-all touch-manipulation cursor-pointer ${
+                globalThai
+                  ? 'bg-rose-500 text-white border-rose-600 shadow-xs'
+                  : 'bg-white/90 text-stone-700 hover:text-stone-900 border-stone-200/90 shadow-2xs'
+              }`}
+              aria-label="Toggle all cards language"
+            >
+              <span>{globalThai ? '🇬🇧 EN All' : '🇹🇭 TH All'}</span>
+            </motion.button>
+
             {/* Refresh Button */}
             <motion.button
               type="button"
@@ -360,6 +378,7 @@ export default function HomePage() {
                   item={item}
                   onToggleBookmark={handleToggleBookmark}
                   onToggleRead={handleToggleRead}
+                  globalThai={globalThai}
                 />
               </motion.div>
             ))}
@@ -417,6 +436,7 @@ export default function HomePage() {
                         item={item}
                         onToggleBookmark={handleToggleBookmark}
                         onToggleRead={handleToggleRead}
+                        globalThai={globalThai}
                       />
                     </motion.div>
                   ))}

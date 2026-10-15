@@ -49,6 +49,15 @@ class CategoryEnum(str, Enum):
     DEV_CLOUD = "DEV_CLOUD"
 
 
+class TechTerm(BaseModel):
+    term: str = Field(
+        description="English technical term appearing in this news item (e.g. 'RCE', 'Path Traversal', 'Zero-Day', 'Weights', 'MoE')."
+    )
+    meaning: str = Field(
+        description="Simple, clear Thai explanation of what this technical term means for a 2nd-year CS student (1 concise line)."
+    )
+
+
 class CuratedNewsItem(BaseModel):
     source_id: str = Field(
         description="Exact unique source_id from input (e.g. cisa_CVE-..., openrouter_..., hn_..., ctftime_...)."
@@ -57,7 +66,7 @@ class CuratedNewsItem(BaseModel):
         description="Allowed category: AI_FREE, CVE_SECURITY, CTF_COMPETITION, or DEV_CLOUD."
     )
     title: str = Field(
-        description="Sharp, professional technical title."
+        description="Sharp, professional technical title in English."
     )
     tldr: str = Field(
         description="2-3 lines concise English summary highlighting technical mechanics and impact."
@@ -71,6 +80,16 @@ class CuratedNewsItem(BaseModel):
     event_start_date: Optional[str] = Field(
         default=None,
         description="ISO 8601 timestamp string for competition start date, or null if not applicable."
+    )
+    tldr_th: str = Field(
+        description="2-3 lines natural, fluent Thai summary. Keep standard technical keywords intact (RCE, JWT, MoE, etc.) without awkward over-translation."
+    )
+    actionable_value_th: str = Field(
+        description="1-2 lines concrete takeaway in natural Thai explaining how a 2nd-year CS student can benefit."
+    )
+    tech_terms_th: List[TechTerm] = Field(
+        default_factory=list,
+        description="List of 1 to 3 difficult or specialized technical terms from this news item, each with a simple Thai explanation."
     )
 
 
@@ -391,6 +410,9 @@ YOUR OBJECTIVES:
    - tldr: Exactly 2-3 lines of concise technical English summary explaining the vulnerability mechanics, tool capabilities, or infrastructure change (and citing related variants/CVEs if consolidated).
    - actionable_value: Exactly 1-2 lines in sharp, technical English providing a concrete takeaway for a 2nd-year CS student targeting Cybersecurity/Cloud Security (e.g. specific home lab to spin up, API credit to claim, CTF to join, or interview talking point).
    - event_start_date: For CTF competitions, preserve the ISO 8601 timestamp string from input; otherwise set to null.
+   - tldr_th: Exactly 2-3 lines of natural, clear Thai summary explaining the same technical points. Keep standard English technical keywords intact (RCE, JWT, MoE, Path Traversal, WAF, etc.) without awkward or literal over-translation.
+   - actionable_value_th: Exactly 1-2 lines in natural, clear Thai explaining concrete value for a student.
+   - tech_terms_th: List of 1 to 3 difficult, specialized technical keywords from this news item (e.g. 'RCE', 'Zero-Day', 'Weights', 'Buffer Overflow'). Each object has 'term' (the English keyword) and 'meaning' (a simple 1-line explanation in clear Thai tailored for a 2nd-year CS student).
 
 Candidate items:
 {json.dumps(unseen_items, indent=2)}
@@ -408,10 +430,11 @@ Candidate items:
             ),
         )
     except errors.APIError as e:
-        if "503" in str(e) or "UNAVAILABLE" in str(e) or "high demand" in str(e):
+        err_msg = str(e).lower()
+        if any(keyword in err_msg for keyword in ["503", "unavailable", "high demand", "429", "resource_exhausted", "quota"]):
             logger.warning(
-                "gemini-3.8-flash is currently experiencing high demand (503 UNAVAILABLE) on Google API. "
-                "Falling back to gemini-2.5-flash to complete curation and persist data..."
+                "gemini-3.8-flash encountered capacity or quota limit (%s). "
+                "Falling back to gemini-2.5-flash to complete curation and persist data...", e
             )
             response = client.models.generate_content(
                 model="gemini-2.5-flash",
@@ -444,6 +467,11 @@ def save_to_supabase(supabase_client: Client, curated_items: List[CuratedNewsIte
     payload = []
     for item in curated_items:
         category_str = item.category.value if hasattr(item.category, "value") else str(item.category)
+        terms_payload = [
+            t.model_dump() if hasattr(t, "model_dump") else dict(t)
+            for t in item.tech_terms_th
+        ] if item.tech_terms_th else []
+
         payload.append({
             "source_id": item.source_id,
             "category": category_str,
@@ -452,6 +480,9 @@ def save_to_supabase(supabase_client: Client, curated_items: List[CuratedNewsIte
             "actionable_value": item.actionable_value,
             "url": item.url,
             "event_start_date": item.event_start_date,
+            "tldr_th": item.tldr_th,
+            "actionable_value_th": item.actionable_value_th,
+            "tech_terms_th": terms_payload,
         })
 
     logger.info(f"Upserting {len(payload)} items into Supabase public.news_items...")
@@ -459,6 +490,100 @@ def save_to_supabase(supabase_client: Client, curated_items: List[CuratedNewsIte
     inserted_count = len(resp.data) if resp.data else len(payload)
     logger.info(f"Successfully upserted {inserted_count} rows into news_items.")
     return inserted_count
+
+
+class BackfillItemTranslation(BaseModel):
+    id: str = Field(description="Exact UUID id of the news item from input.")
+    tldr_th: str = Field(description="2-3 lines natural, fluent Thai summary. Keep standard technical keywords intact (RCE, JWT, MoE, etc.).")
+    actionable_value_th: str = Field(description="1-2 lines concrete takeaway in natural Thai.")
+    tech_terms_th: List[TechTerm] = Field(description="List of 1 to 3 difficult/specialized technical terms from this news item, each with a 1-line explanation in simple Thai.")
+
+
+class BackfillBatchResponse(BaseModel):
+    items: List[BackfillItemTranslation] = Field(description="List of translated items.")
+
+
+def backfill_thai_translations(supabase_client: Client, gemini_api_key: str) -> None:
+    """Backfill tldr_th, actionable_value_th, and tech_terms_th for rows where tldr_th is null."""
+    logger.info("=== Starting Thai Translation & Tech Glossary Backfill ===")
+    resp = supabase_client.table("news_items").select("id, source_id, title, category, tldr, actionable_value, url").is_("tldr_th", "null").execute()
+    rows = resp.data or []
+
+    if not rows:
+        logger.info("All existing news items already have Thai translations. Nothing to backfill!")
+        return
+
+    logger.info("Found %d news items missing Thai translations. Processing in batches...", len(rows))
+    client = genai.Client(api_key=gemini_api_key)
+
+    batch_size = 10
+    total_updated = 0
+
+    for i in range(0, len(rows), batch_size):
+        chunk = rows[i:i + batch_size]
+        logger.info("Translating batch %d to %d (of %d)...", i + 1, min(i + batch_size, len(rows)), len(rows))
+
+        prompt = f"""You are a bilingual technical translator specializing in Cybersecurity, Cloud Computing, and AI for Computer Science students.
+Translate and explain the technical terms for the following news items into natural, easy-to-understand Thai for a 2nd-year CS student.
+
+STRICT INSTRUCTIONS:
+1. Keep standard English technical keywords intact inside the Thai text (do not awkwardly translate terms like RCE, JWT, MoE, Path Traversal, WAF, Zero-Day, Weights, etc. into literal Thai).
+2. For each item:
+   - id: MUST PRESERVE the exact UUID id from input.
+   - tldr_th: 2-3 lines of natural, clear Thai summary explaining what happened and its technical mechanics.
+   - actionable_value_th: 1-2 lines in natural, clear Thai explaining concrete value for a CS student (e.g., home lab to try, credit to claim, or interview talking point).
+   - tech_terms_th: 1 to 3 difficult or specialized technical terms from this item, with a simple 1-line explanation in plain Thai for a 2nd-year CS student.
+
+News items to translate:
+{json.dumps(chunk, indent=2)}
+"""
+        try:
+            response = client.models.generate_content(
+                model="gemini-3.8-flash",
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    response_schema=BackfillBatchResponse,
+                    thinking_config=types.ThinkingConfig(thinking_level="low"),
+                ),
+            )
+        except errors.APIError as e:
+            err_msg = str(e).lower()
+            if any(keyword in err_msg for keyword in ["503", "unavailable", "high demand", "429", "resource_exhausted", "quota"]):
+                logger.warning(
+                    "gemini-3.8-flash encountered capacity or quota limit (%s). Falling back to gemini-2.5-flash...", e
+                )
+                response = client.models.generate_content(
+                    model="gemini-2.5-flash",
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                        response_schema=BackfillBatchResponse,
+                    ),
+                )
+            else:
+                raise
+
+        raw_text = (response.text or "").strip()
+        if raw_text.startswith("```"):
+            raw_text = re.sub(r"^```(?:json)?\s*", "", raw_text)
+            raw_text = re.sub(r"\s*```$", "", raw_text)
+
+        parsed = BackfillBatchResponse.model_validate_json(raw_text)
+
+        for item in parsed.items:
+            terms_payload = [
+                t.model_dump() if hasattr(t, "model_dump") else dict(t)
+                for t in item.tech_terms_th
+            ]
+            supabase_client.table("news_items").update({
+                "tldr_th": item.tldr_th,
+                "actionable_value_th": item.actionable_value_th,
+                "tech_terms_th": terms_payload,
+            }).eq("id", item.id).execute()
+            total_updated += 1
+
+    logger.info("=== Successfully backfilled Thai translations for %d news items ===", total_updated)
 
 
 # ---------------------------------------------------------------------------
@@ -476,6 +601,11 @@ def main() -> None:
         "--dry-run",
         action="store_true",
         help="Fetch and display candidates from all sources without writing to Supabase or invoking Gemini",
+    )
+    parser.add_argument(
+        "--backfill-th",
+        action="store_true",
+        help="Backfill Thai translations and technical glossaries for existing rows where tldr_th IS NULL",
     )
     args = parser.parse_args()
 
@@ -508,6 +638,14 @@ def main() -> None:
             )
             sys.exit(1)
 
+    # Initialize Supabase client
+    supabase_client: Client = create_client(supabase_url, supabase_key)
+
+    # Check if backfill mode requested
+    if args.backfill_th:
+        backfill_thai_translations(supabase_client, gemini_api_key)
+        return
+
     # 1. Fetch from all 4 sources
     logger.info("=== Starting Data Collection ===")
     candidates: List[Dict[str, Any]] = []
@@ -529,8 +667,7 @@ def main() -> None:
         print(f"\nDry run complete. Found {len(candidates)} candidate items.")
         return
 
-    # 2. Initialize Supabase client and query deduplication state
-    supabase_client: Client = create_client(supabase_url, supabase_key)
+    # 2. Query deduplication state
     existing_ids = get_existing_source_ids(supabase_client)
 
     # 3. Filter unseen items
@@ -548,7 +685,7 @@ def main() -> None:
     # 5. Curate and summarize via Gemini
     curated_items = curate_with_gemini(unseen_items, gemini_api_key=gemini_api_key)
 
-    # 5. Save to Supabase
+    # 6. Save to Supabase
     save_to_supabase(supabase_client, curated_items)
     logger.info("=== Ingestion Pipeline Completed Successfully ===")
 

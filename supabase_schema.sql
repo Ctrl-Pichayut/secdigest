@@ -12,7 +12,10 @@ CREATE TABLE IF NOT EXISTS public.news_items (
     event_start_date TIMESTAMPTZ,
     is_bookmarked BOOLEAN NOT NULL DEFAULT FALSE,
     is_read BOOLEAN NOT NULL DEFAULT FALSE,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    tldr_th TEXT,
+    actionable_value_th TEXT,
+    tech_terms_th JSONB DEFAULT '[]'::jsonb
 );
 
 -- Index for efficient chronological ordering and category filtering
