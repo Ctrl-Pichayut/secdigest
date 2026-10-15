@@ -25,7 +25,9 @@ ALTER TABLE public.news_items ENABLE ROW LEVEL SECURITY;
 
 -- Explicit schema & table privilege grants for Supabase Data API
 GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
-GRANT SELECT, UPDATE ON public.news_items TO anon, authenticated;
+GRANT SELECT ON public.news_items TO anon, authenticated;
+-- Column-level update restriction: anon and authenticated can ONLY update bookmarks and read status
+GRANT UPDATE (is_bookmarked, is_read) ON public.news_items TO anon, authenticated;
 GRANT ALL ON public.news_items TO service_role;
 
 -- RLS Policies
@@ -45,3 +47,18 @@ CREATE POLICY "Allow anon and authenticated to update news items"
     TO anon, authenticated
     USING (true)
     WITH CHECK (true);
+
+-- Table public.seen_sources to track all candidate source_ids ever fetched
+-- Prevents rejected low-value items from looping back into prompts on future daily runs
+CREATE TABLE IF NOT EXISTS public.seen_sources (
+    source_id TEXT PRIMARY KEY,
+    seen_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.seen_sources ENABLE ROW LEVEL SECURITY;
+GRANT ALL ON public.seen_sources TO service_role;
+
+-- Backfill seen_sources from news_items
+INSERT INTO public.seen_sources (source_id)
+SELECT source_id FROM public.news_items
+ON CONFLICT (source_id) DO NOTHING;

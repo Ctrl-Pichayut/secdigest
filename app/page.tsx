@@ -32,6 +32,7 @@ export default function HomePage() {
       const { data, error: sbError } = await supabase
         .from('news_items')
         .select('*')
+        .order('is_read', { ascending: true })
         .order('created_at', { ascending: false });
 
       if (sbError) {
@@ -130,16 +131,27 @@ export default function HomePage() {
     }
   };
 
-  // Filtered Items
+  // Filtered and Sorted Items (Unread items first, read items sank to the bottom)
   const filteredItems = useMemo(() => {
+    let list: NewsItem[] = [];
     if (activeFilter === 'SAVED') {
-      return items.filter((item) => item.is_bookmarked);
+      list = items.filter((item) => item.is_bookmarked);
+    } else if (activeFilter === 'ALL') {
+      list = items;
+    } else {
+      list = items.filter((item) => item.category === activeFilter);
     }
-    if (activeFilter === 'ALL') {
-      return items;
-    }
-    return items.filter((item) => item.category === activeFilter);
+
+    return [...list].sort((a, b) => {
+      const readDiff = Number(a.is_read) - Number(b.is_read);
+      if (readDiff !== 0) return readDiff;
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    });
   }, [items, activeFilter]);
+
+  const hasUnread = useMemo(() => filteredItems.some((i) => !i.is_read), [filteredItems]);
+  const hasRead = useMemo(() => filteredItems.some((i) => i.is_read), [filteredItems]);
+  const firstReadIndex = useMemo(() => filteredItems.findIndex((i) => i.is_read), [filteredItems]);
 
   const unreadCount = useMemo(() => {
     return items.filter((item) => !item.is_read).length;
@@ -316,13 +328,24 @@ export default function HomePage() {
 
         {/* Render News Cards */}
         {!loading &&
-          filteredItems.map((item) => (
-            <NewsCard
-              key={item.id}
-              item={item}
-              onToggleBookmark={handleToggleBookmark}
-              onToggleRead={handleToggleRead}
-            />
+          filteredItems.map((item, index) => (
+            <React.Fragment key={item.id}>
+              {hasUnread && hasRead && index === firstReadIndex && (
+                <div
+                  data-testid="read-items-divider"
+                  className="flex items-center gap-3 py-2 my-2 text-zinc-500 text-xs font-semibold uppercase tracking-wider"
+                >
+                  <div className="h-px bg-zinc-800 flex-1" />
+                  <span className="shrink-0 text-zinc-400">Read Items</span>
+                  <div className="h-px bg-zinc-800 flex-1" />
+                </div>
+              )}
+              <NewsCard
+                item={item}
+                onToggleBookmark={handleToggleBookmark}
+                onToggleRead={handleToggleRead}
+              />
+            </React.Fragment>
           ))}
       </main>
     </div>

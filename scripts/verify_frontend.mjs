@@ -100,33 +100,46 @@ async function verifyFrontend() {
     console.log('  ✓ Untoggled bookmark to restore clean state.');
   }
 
-  // 5. Test Mark Read Toggle
-  console.log('6. Testing Mark Read Toggle...');
+  // 5. Test Mark Read Toggle & Auto-Sink
+  console.log('6. Testing Mark Read Toggle & Auto-Sink...');
   await page.locator('[data-testid="filter-all"]').click();
   await page.waitForTimeout(300);
 
-  const firstCard = page.locator('[data-testid^="news-card-"]').first();
+  const initialFirstCard = page.locator('[data-testid^="news-card-"]').first();
+  const initialFirstCardId = await initialFirstCard.getAttribute('data-testid');
   const firstReadBtn = page.locator('[data-testid^="btn-read-"]').first();
   const initialReadText = (await firstReadBtn.textContent())?.trim();
-  console.log(`  Initial Read State: "${initialReadText}"`);
+  console.log(`  Initial first card: ${initialFirstCardId}, Read State: "${initialReadText}"`);
 
+  // Toggle to Read
   await firstReadBtn.click();
   await page.waitForTimeout(600);
 
-  const toggledReadText = (await firstReadBtn.textContent())?.trim();
-  console.log(`  Toggled Read State: "${toggledReadText}"`);
-  if (toggledReadText === initialReadText) {
-    throw new Error('Read button did not change state upon click!');
+  // Check if divider is visible when unread and read items coexist
+  const dividerVisible = await page.locator('[data-testid="read-items-divider"]').isVisible();
+  console.log(`  ✓ "Read Items" divider visible: ${dividerVisible}`);
+
+  // Check that the card that was marked read is positioned after the divider
+  const isBelowDivider = await page.evaluate((cardId) => {
+    const divider = document.querySelector('[data-testid="read-items-divider"]');
+    const card = document.querySelector(`[data-testid="${cardId}"]`);
+    if (!divider || !card) return false;
+    return Boolean(divider.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING);
+  }, initialFirstCardId);
+  console.log(`  ✓ Card successfully sunk below "Read Items" divider: ${isBelowDivider}`);
+  if (!isBelowDivider) {
+    throw new Error('Card marked read was not positioned below the Read Items divider!');
   }
 
-  // Check that card has dimmed opacity class
-  const cardClass = await firstCard.getAttribute('class');
-  console.log(`  Card dimming verified: ${cardClass?.includes('opacity-60')}`);
+  const toggledCard = page.locator(`[data-testid="${initialFirstCardId}"]`);
+  const toggledCardClass = await toggledCard.getAttribute('class');
+  console.log(`  ✓ Card dimming verified (opacity-60): ${toggledCardClass?.includes('opacity-60')}`);
 
   // Toggle back to unread to restore state
-  await firstReadBtn.click();
+  const toggledReadBtn = toggledCard.locator('[data-testid^="btn-read-"]');
+  await toggledReadBtn.click();
   await page.waitForTimeout(600);
-  console.log('  ✓ Untoggled read status to restore clean state.');
+  console.log('  ✓ Untoggled read status to restore clean initial state.');
 
   // 6. Check for Zero Console Errors
   console.log('7. Verifying zero console errors...');

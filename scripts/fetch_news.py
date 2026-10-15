@@ -304,15 +304,51 @@ def fetch_ctftime(force_ctf: bool = False) -> List[Dict[str, Any]]:
 # ---------------------------------------------------------------------------
 
 def get_existing_source_ids(supabase_client: Client) -> Set[str]:
-    """Query existing source_id values from public.news_items to prevent reprocessing."""
+    """Query existing source_id values from public.seen_sources and public.news_items to prevent reprocessing."""
+    existing: Set[str] = set()
+
+    # 1. Query seen_sources table (tracks all fetched candidates including rejected items)
+    try:
+        resp = supabase_client.table("seen_sources").select("source_id").execute()
+        for row in (resp.data or []):
+            if "source_id" in row:
+                existing.add(row["source_id"])
+        logger.info(f"Retrieved {len(existing)} existing source_ids from public.seen_sources.")
+    except Exception as e:
+        logger.warning(f"Could not retrieve source_ids from public.seen_sources: {e}")
+
+    # 2. Query news_items table as secondary safety
     try:
         resp = supabase_client.table("news_items").select("source_id").execute()
-        existing = {row["source_id"] for row in (resp.data or []) if "source_id" in row}
-        logger.info(f"Retrieved {len(existing)} existing source_ids from Supabase.")
-        return existing
+        news_count = 0
+        for row in (resp.data or []):
+            if "source_id" in row:
+                existing.add(row["source_id"])
+                news_count += 1
+        logger.info(f"Retrieved {news_count} existing source_ids from public.news_items.")
     except Exception as e:
-        logger.warning(f"Could not retrieve existing source_ids from Supabase: {e}")
-        return set()
+        logger.warning(f"Could not retrieve existing source_ids from public.news_items: {e}")
+
+    logger.info(f"Total unique previously processed source_ids: {len(existing)}")
+    return existing
+
+
+def record_seen_sources(supabase_client: Client, source_ids: List[str]) -> None:
+    """Upsert all candidate source_ids into public.seen_sources so rejected items never loop back."""
+    if not source_ids:
+        return
+    try:
+        unique_ids = list(set(source_ids))
+        batch_size = 100
+        total_upserted = 0
+        for i in range(0, len(unique_ids), batch_size):
+            chunk = unique_ids[i:i + batch_size]
+            payload = [{"source_id": sid} for sid in chunk]
+            supabase_client.table("seen_sources").upsert(payload, on_conflict="source_id").execute()
+            total_upserted += len(chunk)
+        logger.info(f"Recorded {total_upserted} candidate source_ids into public.seen_sources.")
+    except Exception as e:
+        logger.warning(f"Failed to record source_ids into public.seen_sources: {e}")
 
 
 def curate_with_gemini(
@@ -335,15 +371,24 @@ Below is a feed of raw candidate items fetched today from CISA KEV, OpenRouter (
 
 YOUR OBJECTIVES:
 1. Select at most 5 highest-impact items TOTAL for the day.
-   - Prioritize actively exploited zero-days / critical vulnerabilities (CISA KEV), genuinely useful free AI models/APIs (OpenRouter), practical dev/cloud engineering news (Hacker News), and notable upcoming CTF competitions (CTFtime).
+   - Prioritize actively exploited zero-days / critical vulnerabilities, genuinely useful free AI models/APIs, high-signal cloud/developer tools news, and major upcoming CTFs.
    - Filter out low-value items, minor library patches, marketing hype, and spam.
-   - If only 1-3 items are genuinely high quality, return only those. Return at most 5 items.
-2. For each selected item:
+   - If only 1-3 items are genuinely high quality, return only those. Return at most 5 items total.
+
+2. CATEGORY DIVERSITY & BALANCE:
+   - Select AT MOST 2 'CVE_SECURITY' (CISA KEV) items per run. Do NOT allow CISA KEV catalog batch updates to crowd out other categories.
+   - Ensure a balanced spread across available high-signal items in 'DEV_CLOUD', 'AI_FREE', and 'CTF_COMPETITION'.
+
+3. CONSOLIDATE RELATED RELEASES (VENDOR & PRODUCT DEDUPLICATION):
+   - If multiple CVEs affect the same vendor/product (e.g., multiple AhsayCBS or Ivanti CVEs released in the same catalog batch), pick ONLY the single most impactful entry and mention the related CVE IDs or variants inside its tldr rather than creating separate cards.
+   - If a vendor releases multiple AI model variants simultaneously (e.g., multiple Poolside Laguna variants or multiple Google Gemma 4 sizes), select ONLY the single most relevant variant for developers, and mention the other variants/sizes concisely within its tldr.
+
+4. For each selected item:
    - source_id: MUST PRESERVE the exact source_id from input without modification.
    - url: MUST PRESERVE the exact source url from input (never alter or fabricate links).
    - category: MUST be exactly one of: 'AI_FREE', 'CVE_SECURITY', 'CTF_COMPETITION', 'DEV_CLOUD'.
    - title: Sharp, professional title in English.
-   - tldr: Exactly 2-3 lines of concise technical English summary explaining the vulnerability mechanics, tool capabilities, or infrastructure change.
+   - tldr: Exactly 2-3 lines of concise technical English summary explaining the vulnerability mechanics, tool capabilities, or infrastructure change (and citing related variants/CVEs if consolidated).
    - actionable_value: Exactly 1-2 lines in sharp, technical English providing a concrete takeaway for a 2nd-year CS student targeting Cybersecurity/Cloud Security (e.g. specific home lab to spin up, API credit to claim, CTF to join, or interview talking point).
    - event_start_date: For CTF competitions, preserve the ISO 8601 timestamp string from input; otherwise set to null.
 
@@ -492,11 +537,15 @@ def main() -> None:
     unseen_items = [item for item in candidates if item["source_id"] not in existing_ids]
     logger.info(f"Unseen items requiring processing: {len(unseen_items)} (out of {len(candidates)} total)")
 
+    # 4. Record all candidate source_ids into seen_sources so rejected items never loop back
+    candidate_source_ids = [item["source_id"] for item in candidates if item.get("source_id")]
+    record_seen_sources(supabase_client, candidate_source_ids)
+
     if not unseen_items:
         logger.info("No new unseen items to curate today. Database is already up to date.")
         return
 
-    # 4. Curate and summarize via Gemini
+    # 5. Curate and summarize via Gemini
     curated_items = curate_with_gemini(unseen_items, gemini_api_key=gemini_api_key)
 
     # 5. Save to Supabase
