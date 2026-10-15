@@ -7,8 +7,8 @@ export default function manifest(): MetadataRoute.Manifest {
     description: 'Curated daily cybersecurity, cloud security, CTF, and free AI developer tools digest.',
     start_url: '/',
     display: 'standalone',
-    background_color: '#09090b',
-    theme_color: '#09090b',
+    background_color: '#FAF7F2',
+    theme_color: '#FAF7F2',
     icons: [
       {
         src: '/icon-192x192.png',

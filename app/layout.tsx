@@ -7,7 +7,7 @@ export const metadata: Metadata = {
   manifest: '/manifest.webmanifest',
   appleWebApp: {
     capable: true,
-    statusBarStyle: 'black-translucent',
+    statusBarStyle: 'default',
     title: 'SecDigest',
   },
   icons: {
@@ -21,7 +21,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
-  themeColor: '#09090b',
+  themeColor: '#FAF7F2',
 };
 
 export default function RootLayout({
@@ -30,8 +30,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className="dark">
-      <body className="bg-zinc-950 text-zinc-100 min-h-screen font-sans selection:bg-zinc-800 antialiased">
+    <html lang="en">
+      <body className="bg-[#FAF7F2] text-slate-900 min-h-screen font-sans selection:bg-amber-200 antialiased">
         {children}
       </body>
     </html>

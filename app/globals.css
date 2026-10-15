@@ -3,14 +3,13 @@
 @tailwind utilities;
 
 :root {
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 body {
-  background-color: #09090b;
-  color: #f4f4f5;
+  background-color: #FAF7F2;
+  color: #0f172a;
   -webkit-font-smoothing: antialiased;
-  user-select: none;
   -webkit-tap-highlight-color: transparent;
 }
 

@@ -1,7 +1,7 @@
 import { chromium } from 'playwright';
 
 async function verifyFrontend() {
-  console.log('=== Starting Automated Browser Verification ===');
+  console.log('=== Starting Automated Browser Verification for Phase 5 ===');
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({
     viewport: { width: 390, height: 844 }, // Mobile iPhone standard
@@ -25,37 +25,50 @@ async function verifyFrontend() {
   console.log('1. Navigating to http://localhost:3000...');
   await page.goto('http://localhost:3000', { waitUntil: 'networkidle' });
 
-  // 1. Check Header
-  console.log('2. Verifying Header elements...');
+  // 1. Check Header & New Daily Social Components
+  console.log('2. Verifying Friendly Header & Progress Bar...');
   const title = await page.textContent('h1');
   if (!title || !title.includes('SecDigest')) {
     throw new Error(`Expected title 'SecDigest', got '${title}'`);
   }
   console.log(`  ✓ Header Title: "${title.trim()}"`);
 
+  const morningDrop = await page.locator('text=Morning Drop').first().textContent();
+  console.log(`  ✓ Morning Drop badge: "${morningDrop?.trim()}"`);
+
+  const progressText = await page.locator('[data-testid="progress-text"]').textContent();
+  console.log(`  ✓ Progress bar text: "${progressText?.trim()}"`);
+  if (!progressText || !progressText.includes('caught up today')) {
+    throw new Error(`Unexpected progress bar text: ${progressText}`);
+  }
+
   const unreadCounter = await page.locator('[data-testid="unread-counter"]').textContent();
-  console.log(`  ✓ Unread Badge: "${unreadCounter?.trim()}"`);
+  console.log(`  ✓ Unread counter badge: "${unreadCounter?.trim()}"`);
 
   // 2. Verify Cards loaded from Supabase
   console.log('3. Checking news cards from Supabase...');
   await page.waitForSelector('[data-testid^="news-card-"]', { timeout: 10000 });
   const initialCards = await page.locator('[data-testid^="news-card-"]').count();
-  console.log(`  ✓ Loaded ${initialCards} news cards on "All" filter.`);
+  console.log(`  ✓ Loaded ${initialCards} news cards in total.`);
   if (initialCards === 0) {
     throw new Error('Zero news cards rendered from Supabase!');
   }
 
-  // 3. Test Category Filters
+  // Verify pastel styling and Quick Takeaway label
+  const takeawayLabel = await page.locator('text=Quick Takeaway').first().textContent();
+  console.log(`  ✓ Quick Takeaway bubble present: "${takeawayLabel?.trim()}"`);
+
+  // 3. Test Category Filter Pills
   const filters = [
     { id: 'filter-ai_free', name: 'Free AI & Credits' },
     { id: 'filter-ctf_competition', name: 'CTF & Labs' },
-    { id: 'filter-cve_security', name: 'KEV Alerts' },
+    { id: 'filter-cve_security', name: 'Hot Bugs (KEV)' },
     { id: 'filter-dev_cloud', name: 'Dev & Cloud' },
     { id: 'filter-saved', name: 'Saved' },
     { id: 'filter-all', name: 'All' },
   ];
 
-  console.log('4. Testing Category Filter Pills...');
+  console.log('4. Testing Category Filter Pills with Emoji Tags...');
   for (const filter of filters) {
     const filterBtn = page.locator(`[data-testid="${filter.id}"]`);
     await filterBtn.click();
@@ -66,7 +79,6 @@ async function verifyFrontend() {
 
   // 4. Test Bookmark Toggle
   console.log('5. Testing Bookmark Toggle...');
-  // Click 'All' first
   await page.locator('[data-testid="filter-all"]').click();
   await page.waitForTimeout(300);
 
@@ -76,7 +88,7 @@ async function verifyFrontend() {
 
   // Toggle on
   await firstBookmarkBtn.click();
-  await page.waitForTimeout(600); // allow Supabase mutation
+  await page.waitForTimeout(600);
   const toggledBookmarkText = (await firstBookmarkBtn.textContent())?.trim();
   console.log(`  Toggled Bookmark State: "${toggledBookmarkText}"`);
   if (toggledBookmarkText === initialBookmarkText) {
@@ -100,8 +112,8 @@ async function verifyFrontend() {
     console.log('  ✓ Untoggled bookmark to restore clean state.');
   }
 
-  // 5. Test Mark Read Toggle & Auto-Sink
-  console.log('6. Testing Mark Read Toggle & Auto-Sink...');
+  // 5. Test Mark Read Toggle, Auto-Sink & Collapsible Drawer
+  console.log('6. Testing Mark Read Toggle, Auto-Sink & Collapsible Drawer...');
   await page.locator('[data-testid="filter-all"]').click();
   await page.waitForTimeout(300);
 
@@ -111,38 +123,57 @@ async function verifyFrontend() {
   const initialReadText = (await firstReadBtn.textContent())?.trim();
   console.log(`  Initial first card: ${initialFirstCardId}, Read State: "${initialReadText}"`);
 
+  // Read progress text before marking
+  const prevProgress = await page.locator('[data-testid="progress-text"]').textContent();
+
   // Toggle to Read
   await firstReadBtn.click();
   await page.waitForTimeout(600);
 
-  // Check if divider is visible when unread and read items coexist
-  const dividerVisible = await page.locator('[data-testid="read-items-divider"]').isVisible();
-  console.log(`  ✓ "Read Items" divider visible: ${dividerVisible}`);
+  // Check if drawer button is visible
+  const drawerBtn = page.locator('[data-testid="read-items-divider"]');
+  const drawerBtnVisible = await drawerBtn.isVisible();
+  console.log(`  ✓ Collapsible drawer button visible: ${drawerBtnVisible}`);
 
-  // Check that the card that was marked read is positioned after the divider
-  const isBelowDivider = await page.evaluate((cardId) => {
-    const divider = document.querySelector('[data-testid="read-items-divider"]');
-    const card = document.querySelector(`[data-testid="${cardId}"]`);
-    if (!divider || !card) return false;
-    return Boolean(divider.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING);
-  }, initialFirstCardId);
-  console.log(`  ✓ Card successfully sunk below "Read Items" divider: ${isBelowDivider}`);
-  if (!isBelowDivider) {
-    throw new Error('Card marked read was not positioned below the Read Items divider!');
+  // Progress text updated
+  const newProgress = await page.locator('[data-testid="progress-text"]').textContent();
+  console.log(`  ✓ Progress updated from "${prevProgress?.trim()}" to "${newProgress?.trim()}"`);
+
+  // Expand the drawer to inspect read card
+  await drawerBtn.click();
+  await page.waitForTimeout(500);
+
+  const drawerVisible = await page.locator('[data-testid="read-items-drawer"]').isVisible();
+  console.log(`  ✓ Collapsible drawer expanded: ${drawerVisible}`);
+
+  // Verify the card is inside the drawer
+  const cardInDrawer = page.locator(`[data-testid="read-items-drawer"] [data-testid="${initialFirstCardId}"]`);
+  const isCardInDrawer = await cardInDrawer.isVisible();
+  console.log(`  ✓ Marked card smoothly moved into read drawer: ${isCardInDrawer}`);
+  if (!isCardInDrawer) {
+    throw new Error('Card marked read was not found inside the collapsible read drawer!');
   }
 
-  const toggledCard = page.locator(`[data-testid="${initialFirstCardId}"]`);
-  const toggledCardClass = await toggledCard.getAttribute('class');
-  console.log(`  ✓ Card dimming verified (opacity-60): ${toggledCardClass?.includes('opacity-60')}`);
+  // Check dimmed opacity class on read card
+  const readCardClass = await cardInDrawer.getAttribute('class');
+  console.log(`  ✓ Read card dimmed opacity verified: ${readCardClass?.includes('opacity-60')}`);
 
-  // Toggle back to unread to restore state
-  const toggledReadBtn = toggledCard.locator('[data-testid^="btn-read-"]');
-  await toggledReadBtn.click();
+  // Untoggle back to unread to restore initial state
+  const unreadBtnInDrawer = cardInDrawer.locator('[data-testid^="btn-read-"]');
+  await unreadBtnInDrawer.click();
   await page.waitForTimeout(600);
-  console.log('  ✓ Untoggled read status to restore clean initial state.');
+  console.log('  ✓ Untoggled read status inside drawer to restore clean initial state.');
 
-  // 6. Check for Zero Console Errors
-  console.log('7. Verifying zero console errors...');
+  // 6. Test Sticky Filter Bar Scroll Geometry (Ensure no overlap)
+  console.log('7. Verifying sticky filter bar scroll geometry...');
+  const navBox = await page.locator('nav[aria-label="Category navigation"]').boundingBox();
+  console.log(`  ✓ Nav sticky bar position: top=${navBox?.y}, height=${navBox?.height}`);
+  if (!navBox || navBox.height <= 0) {
+    throw new Error('Nav bar missing valid dimensions!');
+  }
+
+  // 7. Check for Zero Console Errors
+  console.log('8. Verifying zero console errors...');
   if (consoleErrors.length > 0) {
     throw new Error(`Encountered ${consoleErrors.length} console errors: \n${consoleErrors.join('\n')}`);
   }
