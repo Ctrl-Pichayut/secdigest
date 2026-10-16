@@ -23,7 +23,52 @@ export default function HomePage() {
   const [error, setError] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<FilterCategory>('ALL');
   const [readDrawerOpen, setReadDrawerOpen] = useState<boolean>(false);
-  const [globalThai, setGlobalThai] = useState<boolean>(false);
+  const [theme, setTheme] = useState<'paper' | 'dusk'>('paper');
+
+  // Load persisted theme
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('secdigest_theme');
+      if (saved === 'dusk' || saved === 'paper') {
+        setTheme(saved);
+      }
+    } catch {
+      // ignore storage access errors
+    }
+  }, []);
+
+  const toggleTheme = () => {
+    const nextTheme = theme === 'paper' ? 'dusk' : 'paper';
+    setTheme(nextTheme);
+    try {
+      localStorage.setItem('secdigest_theme', nextTheme);
+    } catch {
+      // ignore
+    }
+  };
+
+  const isDusk = theme === 'dusk';
+
+  // Time-aware greeting badge based on user's local hour
+  const timeGreeting = useMemo(() => {
+    const hour = new Date().getHours();
+    if (hour >= 5 && hour < 12) {
+      return {
+        badge: '☀️ MORNING DROP',
+        subtitle: 'Daily CS, Security & AI Intelligence',
+      };
+    }
+    if (hour >= 12 && hour < 18) {
+      return {
+        badge: '☕ AFTERNOON DROP',
+        subtitle: 'Midday CS, Security & AI Intelligence',
+      };
+    }
+    return {
+      badge: '🌙 EVENING DROP',
+      subtitle: 'Evening CS, Security & AI Intelligence',
+    };
+  }, []);
 
   // Load news items from Supabase
   const loadNews = useCallback(async (isRefresh = false) => {
@@ -166,42 +211,63 @@ export default function HomePage() {
   }, []);
 
   return (
-    <div className="max-w-md mx-auto min-h-screen bg-[#FAF7F2] text-slate-900 flex flex-col pb-16 selection:bg-amber-200">
-      {/* Friendly Conversational Header */}
-      <header className="px-5 pt-6 pb-4 bg-[#FAF7F2] border-b border-stone-200/80">
+    <div
+      className={`max-w-md mx-auto min-h-screen flex flex-col pb-16 transition-colors duration-200 ${
+        isDusk
+          ? 'bg-[#221F2E] text-[#EAE6F2] selection:bg-purple-900'
+          : 'bg-[#E5DFD3] text-[#2A2623] selection:bg-amber-200'
+      }`}
+    >
+      {/* Friendly Conversational Header with Eye-Comfort Palette */}
+      <header
+        className={`px-5 pt-6 pb-4 border-b transition-colors duration-200 ${
+          isDusk ? 'bg-[#221F2E] border-[#363248]' : 'bg-[#E5DFD3] border-[#D2C9B8]'
+        }`}
+      >
         <div className="flex items-center justify-between mb-2.5">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-amber-400 via-rose-400 to-violet-500 flex items-center justify-center text-white shadow-md shadow-rose-400/20 text-lg">
+            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-amber-500 via-rose-500 to-violet-600 flex items-center justify-center text-white shadow-md shadow-rose-500/20 text-lg">
               ⚡
             </div>
             <div>
               <div className="flex items-center gap-1.5">
-                <span className="text-[11px] font-bold text-amber-800 uppercase tracking-wider bg-amber-100/90 px-2 py-0.5 rounded-full border border-amber-200/90">
-                  ☀️ Morning Drop
+                <span
+                  data-testid="time-greeting-badge"
+                  className={`text-[11px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border shadow-2xs ${
+                    isDusk
+                      ? 'bg-[#2B273A] text-[#D8D2E7] border-[#3F3A52]'
+                      : 'bg-[#EDE8DF] text-[#4A443E] border-[#D2C9B8]'
+                  }`}
+                >
+                  {timeGreeting.badge}
                 </span>
               </div>
-              <h1 className="text-2xl font-black tracking-tight bg-gradient-to-r from-slate-950 via-rose-950 to-violet-950 bg-clip-text text-transparent leading-tight mt-0.5">
+              <h1
+                className={`text-2xl font-black tracking-tight leading-tight mt-0.5 ${
+                  isDusk ? 'text-[#EAE6F2]' : 'text-[#2A2623]'
+                }`}
+              >
                 SecDigest
               </h1>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Global Language Toggle */}
+            {/* Eye-Comfort Theme Toggle Button (Paper / Dusk) */}
             <motion.button
               type="button"
-              data-testid="btn-global-lang"
-              onClick={() => setGlobalThai((prev) => !prev)}
+              data-testid="btn-theme-toggle"
+              onClick={toggleTheme}
               whileTap={{ scale: 0.92 }}
               whileHover={{ y: -1 }}
-              className={`px-2.5 py-1.5 rounded-xl text-xs font-bold border transition-all touch-manipulation cursor-pointer ${
-                globalThai
-                  ? 'bg-rose-500 text-white border-rose-600 shadow-xs'
-                  : 'bg-white/90 text-stone-700 hover:text-stone-900 border-stone-200/90 shadow-2xs'
+              className={`px-3 py-1.5 rounded-2xl text-xs font-bold border transition-all touch-manipulation cursor-pointer shadow-xs ${
+                isDusk
+                  ? 'bg-[#2B273A] text-[#EAE6F2] border-[#3F3A52] hover:bg-[#353046]'
+                  : 'bg-[#EDE8DF] text-[#2A2623] border-[#D2C9B8] hover:bg-[#E2DBD0]'
               }`}
-              aria-label="Toggle all cards language"
+              aria-label="Toggle Reading Theme"
             >
-              <span>{globalThai ? '🇬🇧 EN All' : '🇹🇭 TH All'}</span>
+              <span>{isDusk ? '🌆 Dusk' : '☕ Paper'}</span>
             </motion.button>
 
             {/* Refresh Button */}
@@ -212,7 +278,11 @@ export default function HomePage() {
               disabled={refreshing}
               whileTap={{ scale: 0.92 }}
               whileHover={{ y: -1 }}
-              className="p-2.5 rounded-2xl text-stone-600 hover:text-stone-900 bg-white/90 hover:bg-white border border-stone-200/90 shadow-xs transition-all touch-manipulation cursor-pointer"
+              className={`p-2.5 rounded-2xl border shadow-xs transition-all touch-manipulation cursor-pointer ${
+                isDusk
+                  ? 'text-[#D8D2E7] hover:text-[#FAF7F2] bg-[#2B273A] hover:bg-[#353046] border-[#3F3A52]'
+                  : 'text-[#4A443E] hover:text-[#2A2623] bg-[#EDE8DF] hover:bg-[#E2DBD0] border-[#D2C9B8]'
+              }`}
               aria-label="Refresh feed"
             >
               <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin text-rose-500' : ''}`} />
@@ -220,13 +290,23 @@ export default function HomePage() {
           </div>
         </div>
 
-        <p className="text-xs text-stone-500 font-medium mb-3 pl-1">
-          {formattedDate} • Daily CS, Security & AI Intelligence
+        <p
+          className={`text-xs font-medium mb-3 pl-1 ${
+            isDusk ? 'text-[#B3ACC5]' : 'text-[#5A544E]'
+          }`}
+        >
+          {formattedDate} • {timeGreeting.subtitle}
         </p>
 
         {/* Interactive Daily Progress Bar */}
-        <div className="bg-white/90 rounded-2xl p-3.5 border border-stone-200/90 shadow-xs space-y-2">
-          <div className="flex items-center justify-between text-xs font-bold text-stone-700">
+        <div
+          className={`rounded-2xl p-3.5 border shadow-xs space-y-2 ${
+            isDusk
+              ? 'bg-[#2B273A] border-[#3F3A52] text-[#EAE6F2]'
+              : 'bg-[#EDE8DF] border-[#D8D0C0] text-[#2A2623]'
+          }`}
+        >
+          <div className="flex items-center justify-between text-xs font-bold">
             <span data-testid="progress-text">
               {totalCount > 0 && totalReadCount === totalCount
                 ? `All ${totalCount} posts caught up today! 🎉`
@@ -236,8 +316,12 @@ export default function HomePage() {
               data-testid="unread-counter"
               className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${
                 unreadCount > 0
-                  ? 'bg-rose-100 text-rose-700 border-rose-200'
-                  : 'bg-emerald-100 text-emerald-700 border-emerald-200'
+                  ? isDusk
+                    ? 'bg-rose-950/70 text-rose-200 border-rose-700/60'
+                    : 'bg-rose-200/90 text-rose-950 border-rose-300'
+                  : isDusk
+                  ? 'bg-emerald-950/70 text-emerald-200 border-emerald-700/60'
+                  : 'bg-emerald-200/90 text-emerald-950 border-emerald-300'
               }`}
             >
               {unreadCount > 0 ? `${unreadCount} unread` : 'All caught up'}
@@ -245,7 +329,11 @@ export default function HomePage() {
           </div>
 
           {/* Animated gradient bar */}
-          <div className="w-full bg-stone-100 rounded-full h-2 overflow-hidden border border-stone-200/60">
+          <div
+            className={`w-full rounded-full h-2 overflow-hidden border ${
+              isDusk ? 'bg-[#201D2C] border-[#37324A]' : 'bg-[#DCD5C9] border-[#CEC5B4]'
+            }`}
+          >
             <motion.div
               data-testid="progress-bar-fill"
               className="h-full bg-gradient-to-r from-amber-400 via-rose-400 to-violet-500 rounded-full"
@@ -257,10 +345,12 @@ export default function HomePage() {
         </div>
       </header>
 
-      {/* Sticky Category Filter Bar */}
+      {/* Sticky Category Filter Bar (Zero glare backdrop) */}
       <nav
         aria-label="Category navigation"
-        className="sticky top-0 z-30 bg-[#FAF7F2]/90 backdrop-blur-md border-b border-stone-200/80 px-4 py-3 flex items-center gap-2 overflow-x-auto no-scrollbar shadow-2xs"
+        className={`sticky top-0 z-30 backdrop-blur-md border-b px-4 py-3 flex items-center gap-2 overflow-x-auto no-scrollbar shadow-2xs transition-colors duration-200 ${
+          isDusk ? 'bg-[#221F2E]/90 border-[#363248]' : 'bg-[#E5DFD3]/90 border-[#D2C9B8]'
+        }`}
       >
         {FILTER_TABS.map((tab) => {
           const isActive = activeFilter === tab.id;
@@ -273,8 +363,12 @@ export default function HomePage() {
               whileTap={{ scale: 0.94 }}
               className={`shrink-0 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all touch-manipulation cursor-pointer ${
                 isActive
-                  ? 'bg-slate-900 text-white shadow-md shadow-slate-900/15 border border-slate-900'
-                  : 'bg-white/90 text-stone-600 border border-stone-200/90 hover:bg-white hover:text-stone-900 shadow-2xs'
+                  ? isDusk
+                    ? 'bg-[#EAE6F2] text-[#221F2E] shadow-sm border border-[#EAE6F2]'
+                    : 'bg-[#2A2623] text-[#FAF7F2] shadow-sm border border-[#2A2623]'
+                  : isDusk
+                  ? 'bg-[#2B273A] text-[#B3ACC5] border border-[#3F3A52] hover:bg-[#353046] hover:text-[#EAE6F2]'
+                  : 'bg-[#EDE8DF] text-[#5A544E] border border-[#D2C9B8] hover:bg-[#E2DBD0] hover:text-[#2A2623]'
               }`}
             >
               {tab.label}
@@ -287,7 +381,11 @@ export default function HomePage() {
       <main className="flex-1 px-4 py-4 space-y-3.5">
         {/* Quick Batch Action Bar when unread items exist */}
         {!loading && unreadItems.length > 0 && (
-          <div className="flex items-center justify-between px-1 text-xs text-stone-500 pb-1">
+          <div
+            className={`flex items-center justify-between px-1 text-xs pb-1 ${
+              isDusk ? 'text-[#B3ACC5]' : 'text-[#5A544E]'
+            }`}
+          >
             <span className="font-medium">
               Showing {unreadItems.length} unread {unreadItems.length === 1 ? 'post' : 'posts'}
             </span>
@@ -295,7 +393,11 @@ export default function HomePage() {
               type="button"
               data-testid="btn-mark-all-read"
               onClick={handleMarkAllRead}
-              className="flex items-center gap-1 text-xs font-semibold text-rose-600 hover:text-rose-700 transition-colors active:scale-95 touch-manipulation cursor-pointer"
+              className={`flex items-center gap-1 text-xs font-semibold transition-colors active:scale-95 touch-manipulation cursor-pointer ${
+                isDusk
+                  ? 'text-rose-400 hover:text-rose-300'
+                  : 'text-rose-700 hover:text-rose-900'
+              }`}
             >
               <CheckCheck className="w-3.5 h-3.5" />
               <span>Mark all read</span>
@@ -305,8 +407,14 @@ export default function HomePage() {
 
         {/* Error State */}
         {error && (
-          <div className="rounded-3xl bg-rose-50 border border-rose-200 p-4 text-center my-4 shadow-xs">
-            <p className="text-xs text-rose-700 font-semibold mb-2.5">{error}</p>
+          <div
+            className={`rounded-3xl p-4 text-center my-4 shadow-xs border ${
+              isDusk
+                ? 'bg-[#3A2528] border-rose-800/60 text-rose-200'
+                : 'bg-[#F5E2DE] border-rose-300 text-rose-950'
+            }`}
+          >
+            <p className="text-xs font-semibold mb-2.5">{error}</p>
             <button
               type="button"
               onClick={() => loadNews()}
@@ -317,28 +425,72 @@ export default function HomePage() {
           </div>
         )}
 
-        {/* Skeleton Loading State */}
+        {/* Skeleton Loading State (Non-white surfaces) */}
         {loading && (
           <div className="space-y-3.5">
             {[1, 2, 3].map((n) => (
               <div
                 key={n}
-                className="rounded-3xl bg-white/80 border border-stone-200/80 p-5 space-y-3 animate-pulse shadow-xs"
+                className={`rounded-3xl p-5 space-y-3 animate-pulse shadow-xs border ${
+                  isDusk
+                    ? 'bg-[#2D293C] border-[#3F3A52]'
+                    : 'bg-[#EDE8DF] border-[#D2C9B8]'
+                }`}
               >
                 <div className="flex justify-between items-center">
-                  <div className="w-28 h-6 bg-stone-200/80 rounded-full" />
-                  <div className="w-12 h-4 bg-stone-200/80 rounded" />
+                  <div
+                    className={`w-28 h-6 rounded-full ${
+                      isDusk ? 'bg-[#3B354D]' : 'bg-[#DCD5C9]'
+                    }`}
+                  />
+                  <div
+                    className={`w-12 h-4 rounded ${
+                      isDusk ? 'bg-[#3B354D]' : 'bg-[#DCD5C9]'
+                    }`}
+                  />
                 </div>
-                <div className="w-4/5 h-5 bg-stone-200/80 rounded-lg" />
+                <div
+                  className={`w-4/5 h-5 rounded-lg ${
+                    isDusk ? 'bg-[#3B354D]' : 'bg-[#DCD5C9]'
+                  }`}
+                />
                 <div className="space-y-1.5">
-                  <div className="w-full h-3.5 bg-stone-200/60 rounded" />
-                  <div className="w-5/6 h-3.5 bg-stone-200/60 rounded" />
+                  <div
+                    className={`w-full h-3.5 rounded ${
+                      isDusk ? 'bg-[#3B354D]/70' : 'bg-[#DCD5C9]/70'
+                    }`}
+                  />
+                  <div
+                    className={`w-5/6 h-3.5 rounded ${
+                      isDusk ? 'bg-[#3B354D]/70' : 'bg-[#DCD5C9]/70'
+                    }`}
+                  />
                 </div>
-                <div className="h-16 bg-stone-100 rounded-2xl" />
-                <div className="flex justify-between pt-2 border-t border-stone-200/60">
-                  <div className="w-16 h-7 bg-stone-200/80 rounded-xl" />
-                  <div className="w-20 h-7 bg-stone-200/80 rounded-xl" />
-                  <div className="w-16 h-7 bg-stone-200/80 rounded-xl" />
+                <div
+                  className={`h-16 rounded-2xl ${
+                    isDusk ? 'bg-[#252232]' : 'bg-[#E5DFD3]'
+                  }`}
+                />
+                <div
+                  className={`flex justify-between pt-2 border-t ${
+                    isDusk ? 'border-[#3F3A52]' : 'border-[#D2C9B8]'
+                  }`}
+                >
+                  <div
+                    className={`w-16 h-7 rounded-xl ${
+                      isDusk ? 'bg-[#3B354D]' : 'bg-[#DCD5C9]'
+                    }`}
+                  />
+                  <div
+                    className={`w-20 h-7 rounded-xl ${
+                      isDusk ? 'bg-[#3B354D]' : 'bg-[#DCD5C9]'
+                    }`}
+                  />
+                  <div
+                    className={`w-16 h-7 rounded-xl ${
+                      isDusk ? 'bg-[#3B354D]' : 'bg-[#DCD5C9]'
+                    }`}
+                  />
                 </div>
               </div>
             ))}
@@ -347,14 +499,34 @@ export default function HomePage() {
 
         {/* Empty State */}
         {!loading && filteredItems.length === 0 && (
-          <div className="rounded-3xl border-2 border-dashed border-stone-200 bg-white/70 p-8 text-center my-8 shadow-xs">
-            <div className="w-12 h-12 rounded-2xl bg-amber-50 border border-amber-200 mx-auto flex items-center justify-center text-amber-600 mb-3 text-xl">
+          <div
+            className={`rounded-3xl border-2 border-dashed p-8 text-center my-8 shadow-xs ${
+              isDusk
+                ? 'bg-[#2B273A] border-[#3F3A52]'
+                : 'bg-[#EDE8DF] border-[#D2C9B8]'
+            }`}
+          >
+            <div
+              className={`w-12 h-12 rounded-2xl mx-auto flex items-center justify-center mb-3 text-xl border ${
+                isDusk
+                  ? 'bg-[#352F46] border-[#4A4462] text-amber-300'
+                  : 'bg-[#E5DFD3] border-[#D2C9B8] text-amber-800'
+              }`}
+            >
               {activeFilter === 'SAVED' ? '🔖' : '✨'}
             </div>
-            <h3 className="text-sm font-bold text-slate-900 mb-1">
+            <h3
+              className={`text-sm font-bold mb-1 ${
+                isDusk ? 'text-[#EAE6F2]' : 'text-[#2A2623]'
+              }`}
+            >
               {activeFilter === 'SAVED' ? 'No Saved Posts Yet' : 'No Posts in This Topic'}
             </h3>
-            <p className="text-xs text-stone-500 max-w-xs mx-auto leading-relaxed">
+            <p
+              className={`text-xs max-w-xs mx-auto leading-relaxed ${
+                isDusk ? 'text-[#B3ACC5]' : 'text-[#5A544E]'
+              }`}
+            >
               {activeFilter === 'SAVED'
                 ? 'Tap "Save" on any post to keep it handy for quick offline reference.'
                 : 'There are currently no items under this topic tag. Check "All" or refresh for today\'s drop.'}
@@ -378,14 +550,14 @@ export default function HomePage() {
                   item={item}
                   onToggleBookmark={handleToggleBookmark}
                   onToggleRead={handleToggleRead}
-                  globalThai={globalThai}
+                  theme={theme}
                 />
               </motion.div>
             ))}
           </AnimatePresence>
         )}
 
-        {/* Caught Up / Read Posts Collapsible Section */}
+        {/* Caught Up / Read Posts Collapsible Section (100% Crisp, Never Dimmed) */}
         {!loading && readItems.length > 0 && (
           <div className="pt-2">
             <motion.button
@@ -393,15 +565,29 @@ export default function HomePage() {
               data-testid="read-items-divider"
               onClick={() => setReadDrawerOpen((prev) => !prev)}
               whileTap={{ scale: 0.98 }}
-              className="w-full flex items-center justify-between p-3.5 rounded-2xl bg-white/90 hover:bg-white border border-stone-200/90 text-stone-700 transition-all font-bold text-xs touch-manipulation cursor-pointer shadow-xs"
+              className={`w-full flex items-center justify-between p-3.5 rounded-2xl border transition-all font-bold text-xs touch-manipulation cursor-pointer shadow-xs ${
+                isDusk
+                  ? 'bg-[#2B273A] hover:bg-[#353046] border-[#3F3A52] text-[#EAE6F2]'
+                  : 'bg-[#EDE8DF] hover:bg-[#E2DBD0] border-[#D2C9B8] text-[#2A2623]'
+              }`}
             >
               <div className="flex items-center gap-2">
-                <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-xs font-bold">
+                <span
+                  className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold ${
+                    isDusk
+                      ? 'bg-emerald-950/70 text-emerald-300'
+                      : 'bg-emerald-200/90 text-emerald-950'
+                  }`}
+                >
                   ✓
                 </span>
                 <span>Caught Up Posts ({readItems.length})</span>
               </div>
-              <span className="text-[11px] text-stone-500 font-semibold flex items-center gap-1">
+              <span
+                className={`text-[11px] font-semibold flex items-center gap-1 ${
+                  isDusk ? 'text-[#B3ACC5]' : 'text-[#6A635C]'
+                }`}
+              >
                 {readDrawerOpen ? 'Hide' : 'Tap to expand'}
                 <ChevronDown
                   className={`w-3.5 h-3.5 transition-transform duration-200 ${
@@ -436,7 +622,7 @@ export default function HomePage() {
                         item={item}
                         onToggleBookmark={handleToggleBookmark}
                         onToggleRead={handleToggleRead}
-                        globalThai={globalThai}
+                        theme={theme}
                       />
                     </motion.div>
                   ))}

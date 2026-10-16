@@ -9,7 +9,7 @@ interface NewsCardProps {
   item: NewsItem;
   onToggleBookmark: (id: string, currentState: boolean) => void;
   onToggleRead: (id: string, currentState: boolean) => void;
-  globalThai?: boolean;
+  theme?: 'paper' | 'dusk';
 }
 
 export function getCtfCountdown(startDateStr: string | null): string | null {
@@ -38,62 +38,104 @@ export function getCtfCountdown(startDateStr: string | null): string | null {
   }
 }
 
-export default function NewsCard({ item, onToggleBookmark, onToggleRead, globalThai = false }: NewsCardProps) {
-  const [cardLang, setCardLang] = useState<'EN' | 'TH' | null>(null);
+export default function NewsCard({
+  item,
+  onToggleBookmark,
+  onToggleRead,
+  theme = 'paper',
+}: NewsCardProps) {
+  // Independent per-card Thai translation state
+  const [isThai, setIsThai] = useState(false);
   const countdown = getCtfCountdown(item.event_start_date);
-
   const hasThai = Boolean(item.tldr_th);
-  const isThai = hasThai && (cardLang !== null ? cardLang === 'TH' : globalThai);
 
-  const categoryMeta = {
-    AI_FREE: {
-      label: '🎁 Free AI & Credits',
-      cardBg: 'bg-emerald-50/70 border-emerald-200 hover:border-emerald-300',
-      badgeClass: 'bg-emerald-100 text-emerald-800 border-emerald-200 shadow-xs',
-      takeawayBox: 'bg-emerald-100/70 border-emerald-200/90 text-emerald-950',
-      takeawayLabel: 'text-emerald-800',
-    },
-    CTF_COMPETITION: {
-      label: '🏆 CTF Event',
-      cardBg: 'bg-violet-50/70 border-violet-200 hover:border-violet-300',
-      badgeClass: 'bg-violet-100 text-violet-800 border-violet-200 shadow-xs',
-      takeawayBox: 'bg-violet-100/70 border-violet-200/90 text-violet-950',
-      takeawayLabel: 'text-violet-800',
-    },
-    CVE_SECURITY: {
-      label: '🔥 Security Alert',
-      cardBg: 'bg-orange-50/70 border-orange-200 hover:border-orange-300',
-      badgeClass: 'bg-orange-100 text-orange-800 border-orange-200 shadow-xs',
-      takeawayBox: 'bg-orange-100/70 border-orange-200/90 text-orange-950',
-      takeawayLabel: 'text-orange-800',
-    },
-    DEV_CLOUD: {
-      label: '☁️ Dev & Cloud',
-      cardBg: 'bg-sky-50/70 border-sky-200 hover:border-sky-300',
-      badgeClass: 'bg-sky-100 text-sky-800 border-sky-200 shadow-xs',
-      takeawayBox: 'bg-sky-100/70 border-sky-200/90 text-sky-950',
-      takeawayLabel: 'text-sky-800',
-    },
-  }[item.category] || {
-    label: item.category,
-    cardBg: 'bg-stone-50/80 border-stone-200 hover:border-stone-300',
-    badgeClass: 'bg-stone-100 text-stone-800 border-stone-200',
-    takeawayBox: 'bg-stone-100/70 border-stone-200 text-stone-900',
-    takeawayLabel: 'text-stone-700',
-  };
+  const isDusk = theme === 'dusk';
+
+  // Category visual metadata per theme (Zero #FFFFFF, Zero #09090b)
+  const categoryMeta = isDusk
+    ? {
+        AI_FREE: {
+          label: '🎁 Free AI & Credits',
+          cardBg: 'bg-[#2D293C] border-[#3F524A]',
+          badgeClass: 'bg-[#264036] text-[#A3E5CA] border-[#33594B]',
+          takeawayBox: 'bg-[#252232] border border-white/5 text-[#D8D2E7]',
+          takeawayLabel: 'text-[#A3E5CA]',
+        },
+        CTF_COMPETITION: {
+          label: '🏆 CTF Event',
+          cardBg: 'bg-[#2D293C] border-[#4C3F5E]',
+          badgeClass: 'bg-[#3B2D52] text-[#D4C3ED] border-[#4E3C6B]',
+          takeawayBox: 'bg-[#252232] border border-white/5 text-[#D8D2E7]',
+          takeawayLabel: 'text-[#D4C3ED]',
+        },
+        CVE_SECURITY: {
+          label: '🔥 Security Alert',
+          cardBg: 'bg-[#2D293C] border-[#5A3E39]',
+          badgeClass: 'bg-[#482D28] text-[#F5B8AC] border-[#5E3B34]',
+          takeawayBox: 'bg-[#252232] border border-white/5 text-[#D8D2E7]',
+          takeawayLabel: 'text-[#F5B8AC]',
+        },
+        DEV_CLOUD: {
+          label: '☁️ Dev & Cloud',
+          cardBg: 'bg-[#2D293C] border-[#3A4959]',
+          badgeClass: 'bg-[#283848] text-[#A8D3F5] border-[#364D63]',
+          takeawayBox: 'bg-[#252232] border border-white/5 text-[#D8D2E7]',
+          takeawayLabel: 'text-[#A8D3F5]',
+        },
+      }[item.category] || {
+        label: item.category,
+        cardBg: 'bg-[#2D293C] border-[#3F3A52]',
+        badgeClass: 'bg-[#37324A] text-[#D8D2E7] border-[#4A4462]',
+        takeawayBox: 'bg-[#252232] border border-white/5 text-[#D8D2E7]',
+        takeawayLabel: 'text-[#D8D2E7]',
+      }
+    : {
+        AI_FREE: {
+          label: '🎁 Free AI & Credits',
+          cardBg: 'bg-[#DFECE6] border-[#B8D8CA]',
+          badgeClass: 'bg-[#C8E0D5] text-[#1E4D3B] border-[#A8CEBC]',
+          takeawayBox: 'bg-[#EFECE6]/90 border border-black/5 text-[#3A3530]',
+          takeawayLabel: 'text-[#1E4D3B]',
+        },
+        CTF_COMPETITION: {
+          label: '🏆 CTF Event',
+          cardBg: 'bg-[#E6E1F0] border-[#C8BFE0]',
+          badgeClass: 'bg-[#D6CDE7] text-[#3D2E5E] border-[#BDB2D6]',
+          takeawayBox: 'bg-[#EFECE6]/90 border border-black/5 text-[#3A3530]',
+          takeawayLabel: 'text-[#3D2E5E]',
+        },
+        CVE_SECURITY: {
+          label: '🔥 Security Alert',
+          cardBg: 'bg-[#F2E2DA] border-[#E0C2B4]',
+          badgeClass: 'bg-[#E8CFC2] text-[#5C2E1B] border-[#D9B7A6]',
+          takeawayBox: 'bg-[#EFECE6]/90 border border-black/5 text-[#3A3530]',
+          takeawayLabel: 'text-[#5C2E1B]',
+        },
+        DEV_CLOUD: {
+          label: '☁️ Dev & Cloud',
+          cardBg: 'bg-[#DEE9F2] border-[#B9D0E4]',
+          badgeClass: 'bg-[#C7DCED] text-[#1B4366] border-[#A6C7E0]',
+          takeawayBox: 'bg-[#EFECE6]/90 border border-black/5 text-[#3A3530]',
+          takeawayLabel: 'text-[#1B4366]',
+        },
+      }[item.category] || {
+        label: item.category,
+        cardBg: 'bg-[#EDE8DF] border-[#D2C9B8]',
+        badgeClass: 'bg-[#DCD5C9] text-[#2A2623] border-[#CEC5B4]',
+        takeawayBox: 'bg-[#EFECE6]/90 border border-black/5 text-[#3A3530]',
+        takeawayLabel: 'text-[#2A2623]',
+      };
 
   return (
     <article
       data-testid={`news-card-${item.id}`}
-      className={`relative rounded-3xl p-5 shadow-sm border-2 transition-all duration-200 ${categoryMeta.cardBg} ${
-        item.is_read ? 'opacity-60 saturate-[0.85]' : 'opacity-100'
-      }`}
+      className={`relative rounded-3xl p-5 shadow-sm border-2 transition-all duration-200 ${categoryMeta.cardBg}`}
     >
-      {/* Category, Status & Language Top Bar */}
+      {/* Category, Countdown & Language Top Bar (No duplicate top Saved badge) */}
       <div className="flex items-center justify-between gap-2 mb-3">
         <div className="flex items-center gap-2 flex-wrap">
           <span
-            className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold border ${categoryMeta.badgeClass}`}
+            className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold border shadow-2xs ${categoryMeta.badgeClass}`}
           >
             {categoryMeta.label}
           </span>
@@ -102,43 +144,46 @@ export default function NewsCard({ item, onToggleBookmark, onToggleRead, globalT
             <span
               className={`inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold border ${
                 countdown === 'Live Now'
-                  ? 'bg-rose-100 text-rose-700 border-rose-300 animate-pulse shadow-xs'
-                  : 'bg-amber-100 text-amber-800 border-amber-300 shadow-xs'
+                  ? isDusk
+                    ? 'bg-rose-950/70 text-rose-200 border-rose-700/60 animate-pulse shadow-xs'
+                    : 'bg-rose-200 text-rose-950 border-rose-300 animate-pulse shadow-xs'
+                  : isDusk
+                  ? 'bg-amber-950/70 text-amber-200 border-amber-700/60 shadow-xs'
+                  : 'bg-amber-200/90 text-amber-950 border-amber-300 shadow-xs'
               }`}
             >
               ⏳ {countdown}
             </span>
           )}
 
-          {/* Per-Card Thai Translation Toggle Button */}
+          {/* Independent Per-Card Thai Translation Toggle Button */}
           {hasThai && (
             <motion.button
               type="button"
               data-testid={`btn-lang-${item.id}`}
-              onClick={() => setCardLang(isThai ? 'EN' : 'TH')}
+              onClick={() => setIsThai((prev) => !prev)}
               whileTap={{ scale: 0.92 }}
               className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold border transition-all cursor-pointer ${
                 isThai
-                  ? 'bg-rose-500 text-white border-rose-600 shadow-xs'
-                  : 'bg-white/90 text-stone-700 hover:text-stone-900 border-stone-200/90 shadow-2xs'
+                  ? 'bg-rose-600 text-white border-rose-700 shadow-sm'
+                  : isDusk
+                  ? 'bg-[#37324A] text-[#D8D2E7] hover:text-[#FAF7F2] hover:bg-[#433D5B] border-[#4A4462]'
+                  : 'bg-[#E0DAD0] text-[#4A443E] hover:text-[#2A2623] hover:bg-[#D6CEBF] border-[#C8BFB0]'
               }`}
-              aria-label="Toggle language"
+              aria-label="Toggle Thai Translation"
             >
-              <span>{isThai ? '🇬🇧 EN' : '🇹🇭 TH'}</span>
+              <span>🇹🇭 TH</span>
             </motion.button>
           )}
         </div>
-
-        {item.is_bookmarked && (
-          <span className="text-amber-600 bg-amber-100/80 px-2.5 py-0.5 rounded-full border border-amber-200 flex items-center gap-1 text-[11px] font-bold">
-            <Bookmark className="w-3 h-3 fill-amber-500 text-amber-500" />
-            Saved
-          </span>
-        )}
       </div>
 
-      {/* Post Title */}
-      <h2 className="text-[17px] font-extrabold text-slate-900 leading-snug tracking-tight mb-2 hover:text-slate-950">
+      {/* Post Title (100% crisp typography, zero dimming) */}
+      <h2
+        className={`text-[17px] font-extrabold leading-snug tracking-tight mb-2 ${
+          isDusk ? 'text-[#EAE6F2]' : 'text-[#2A2623]'
+        }`}
+      >
         {item.title}
       </h2>
 
@@ -150,15 +195,21 @@ export default function NewsCard({ item, onToggleBookmark, onToggleRead, globalT
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -3 }}
           transition={{ duration: 0.18 }}
-          className="text-xs sm:text-sm text-slate-700 leading-relaxed mb-3.5 font-normal"
+          className={`text-xs sm:text-sm leading-relaxed mb-3.5 font-normal ${
+            isDusk ? 'text-[#C4BED4]' : 'text-[#443E38]'
+          }`}
         >
           {isThai && item.tldr_th ? item.tldr_th : item.tldr}
         </motion.p>
       </AnimatePresence>
 
       {/* Redesigned Takeaway Callout */}
-      <div className={`rounded-2xl p-3.5 mb-4 border shadow-xs transition-colors ${categoryMeta.takeawayBox}`}>
-        <div className={`flex items-center gap-1.5 text-xs font-bold tracking-tight mb-1.5 ${categoryMeta.takeawayLabel}`}>
+      <div
+        className={`rounded-2xl p-3.5 mb-4 border shadow-xs transition-colors ${categoryMeta.takeawayBox}`}
+      >
+        <div
+          className={`flex items-center gap-1.5 text-xs font-bold tracking-tight mb-1.5 ${categoryMeta.takeawayLabel}`}
+        >
           <span>{isThai ? '💡 สรุปสั้นๆ ว่าทำไมควรรู้' : '💡 Quick Takeaway'}</span>
         </div>
         <p className="text-xs sm:text-[13px] font-medium leading-relaxed">
@@ -175,18 +226,34 @@ export default function NewsCard({ item, onToggleBookmark, onToggleRead, globalT
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
             transition={{ duration: 0.2 }}
-            className="rounded-2xl p-3.5 mb-4 bg-white/95 border border-stone-200/90 shadow-2xs overflow-hidden"
+            className={`rounded-2xl p-3.5 mb-4 border shadow-2xs overflow-hidden ${
+              isDusk
+                ? 'bg-[#252232] border-[#3F3A52] text-[#D8D2E7]'
+                : 'bg-[#EFECE6]/95 border-[#D2C9B8] text-[#3A3530]'
+            }`}
           >
-            <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800 mb-2">
+            <div
+              className={`flex items-center gap-1.5 text-xs font-bold mb-2 ${
+                isDusk ? 'text-[#EAE6F2]' : 'text-[#2A2623]'
+              }`}
+            >
               <span>🧠 ศัพท์เทคนิคในข่าวนี้</span>
             </div>
-            <ul className="space-y-1.5 text-xs text-slate-700">
+            <ul className="space-y-1.5 text-xs">
               {item.tech_terms_th.map((termObj, idx) => (
                 <li key={idx} className="leading-snug">
-                  <span className="font-extrabold text-slate-900 bg-stone-100 px-1.5 py-0.5 rounded text-[11px] mr-1.5 border border-stone-200">
+                  <span
+                    className={`font-extrabold px-1.5 py-0.5 rounded text-[11px] mr-1.5 border ${
+                      isDusk
+                        ? 'bg-[#342F45] text-[#FAF7F2] border-[#46405C]'
+                        : 'bg-[#E0DAD0] text-[#2A2623] border-[#CEC5B8]'
+                    }`}
+                  >
                     {termObj.term}
                   </span>
-                  <span>{termObj.meaning}</span>
+                  <span className={isDusk ? 'text-[#C4BED4]' : 'text-[#443E38]'}>
+                    {termObj.meaning}
+                  </span>
                 </li>
               ))}
             </ul>
@@ -194,8 +261,12 @@ export default function NewsCard({ item, onToggleBookmark, onToggleRead, globalT
         )}
       </AnimatePresence>
 
-      {/* Interactive Social Action Bar */}
-      <div className="flex items-center justify-between gap-2 pt-3 border-t border-stone-200/80">
+      {/* Interactive Action Bar (Clean non-white pills) */}
+      <div
+        className={`flex items-center justify-between gap-2 pt-3 border-t ${
+          isDusk ? 'border-[#3F3A52]' : 'border-[#D2C9B8]'
+        }`}
+      >
         {/* Bookmark Button */}
         <motion.button
           type="button"
@@ -205,12 +276,24 @@ export default function NewsCard({ item, onToggleBookmark, onToggleRead, globalT
           whileHover={{ y: -1 }}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all touch-manipulation cursor-pointer ${
             item.is_bookmarked
-              ? 'bg-amber-100 text-amber-800 border border-amber-300 shadow-xs'
-              : 'bg-white/80 hover:bg-white text-slate-600 hover:text-slate-900 border border-stone-200/90 shadow-xs'
+              ? isDusk
+                ? 'bg-amber-950/70 text-amber-200 border border-amber-700/60 font-bold shadow-xs'
+                : 'bg-amber-200/90 text-amber-950 border border-amber-300 font-bold shadow-xs'
+              : isDusk
+              ? 'bg-[#37324A] hover:bg-[#433D5B] text-[#D8D2E7] hover:text-[#FAF7F2] border border-[#4A4462] shadow-2xs'
+              : 'bg-[#EFECE6] hover:bg-[#E5DFD3] text-[#4A443E] hover:text-[#2A2623] border border-[#D2C9B8] shadow-2xs'
           }`}
           aria-label={item.is_bookmarked ? 'Remove bookmark' : 'Bookmark item'}
         >
-          <Bookmark className={`w-3.5 h-3.5 ${item.is_bookmarked ? 'fill-amber-500 text-amber-500' : ''}`} />
+          <Bookmark
+            className={`w-3.5 h-3.5 ${
+              item.is_bookmarked
+                ? isDusk
+                  ? 'fill-amber-300 text-amber-300'
+                  : 'fill-amber-800 text-amber-800'
+                : ''
+            }`}
+          />
           <span>{item.is_bookmarked ? 'Saved' : 'Save'}</span>
         </motion.button>
 
@@ -223,12 +306,24 @@ export default function NewsCard({ item, onToggleBookmark, onToggleRead, globalT
           whileHover={{ y: -1 }}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all touch-manipulation cursor-pointer ${
             item.is_read
-              ? 'bg-emerald-100 text-emerald-800 border border-emerald-300 shadow-xs'
-              : 'bg-white/80 hover:bg-white text-slate-600 hover:text-slate-900 border border-stone-200/90 shadow-xs'
+              ? isDusk
+                ? 'bg-emerald-950/70 text-emerald-300 border border-emerald-700/60 font-bold shadow-xs'
+                : 'bg-emerald-200/90 text-emerald-950 border border-emerald-300 font-bold shadow-xs'
+              : isDusk
+              ? 'bg-[#37324A] hover:bg-[#433D5B] text-[#D8D2E7] hover:text-[#FAF7F2] border border-[#4A4462] shadow-2xs'
+              : 'bg-[#EFECE6] hover:bg-[#E5DFD3] text-[#4A443E] hover:text-[#2A2623] border border-[#D2C9B8] shadow-2xs'
           }`}
           aria-label={item.is_read ? 'Mark as unread' : 'Mark as read'}
         >
-          <CheckCircle2 className={`w-3.5 h-3.5 ${item.is_read ? 'text-emerald-600 fill-emerald-200' : ''}`} />
+          <CheckCircle2
+            className={`w-3.5 h-3.5 ${
+              item.is_read
+                ? isDusk
+                  ? 'text-emerald-300 fill-emerald-800/40'
+                  : 'text-emerald-800 fill-emerald-400/40'
+                : ''
+            }`}
+          />
           <span>{item.is_read ? 'Read' : 'Mark Read'}</span>
         </motion.button>
 
@@ -240,10 +335,14 @@ export default function NewsCard({ item, onToggleBookmark, onToggleRead, globalT
           data-testid={`btn-source-${item.id}`}
           whileTap={{ scale: 0.92 }}
           whileHover={{ y: -1 }}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-white/80 hover:bg-white text-slate-700 hover:text-slate-950 border border-stone-200/90 shadow-xs transition-all touch-manipulation"
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all touch-manipulation border shadow-2xs ${
+            isDusk
+              ? 'bg-[#37324A] hover:bg-[#433D5B] text-[#EAE6F2] hover:text-[#FAF7F2] border-[#4A4462]'
+              : 'bg-[#EFECE6] hover:bg-[#E5DFD3] text-[#2A2623] border-[#D2C9B8]'
+          }`}
         >
           <span>Read Post</span>
-          <ExternalLink className="w-3 h-3 text-slate-500" />
+          <ExternalLink className={`w-3 h-3 ${isDusk ? 'text-[#B3ACC5]' : 'text-[#6A635C]'}`} />
         </motion.a>
       </div>
     </article>
