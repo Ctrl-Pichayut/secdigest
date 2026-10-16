@@ -70,8 +70,8 @@ async function verifyFrontend() {
     throw new Error(`Found ${pureWhiteCount} pure white (#FFFFFF) elements on page! Cozy Paper must ban pure white.`);
   }
 
-  // 3. Test Theme Switching ("☕ Paper" -> "🌆 Dusk" -> "☕ Paper")
-  console.log('4. Testing Eye-Comfort Theme Switcher...');
+  // 3. Test Theme Switching ("☕ Paper" -> "🌆 Dusk") & Thorough Dusk Styling Audit
+  console.log('4. Testing Eye-Comfort Theme Switcher and auditing Dusk palette...');
   const themeBtn = page.locator('[data-testid="btn-theme-toggle"]');
   const initialThemeText = (await themeBtn.textContent())?.trim();
   console.log(`  Initial theme button: "${initialThemeText}"`);
@@ -86,6 +86,20 @@ async function verifyFrontend() {
     throw new Error(`Expected Dusk mode, got '${duskThemeText}'`);
   }
 
+  // Verify body background sync
+  const bodyBg = await page.evaluate(() => document.body.style.backgroundColor);
+  console.log(`  ✓ Synced body backgroundColor: "${bodyBg}" (Expected #1E1B29)`);
+  if (!bodyBg.includes('#1E1B29') && !bodyBg.includes('rgb(30, 27, 41)')) {
+    throw new Error(`Expected body background to be #1E1B29 / rgb(30, 27, 41), got '${bodyBg}'`);
+  }
+
+  // Verify meta theme-color sync
+  const metaThemeColor = await page.evaluate(() => document.querySelector('meta[name="theme-color"]')?.getAttribute('content'));
+  console.log(`  ✓ Synced meta theme-color: "${metaThemeColor}"`);
+  if (metaThemeColor !== '#1E1B29') {
+    throw new Error(`Expected meta theme-color '#1E1B29', got '${metaThemeColor}'`);
+  }
+
   // Verify localStorage persistence
   const savedTheme = await page.evaluate(() => localStorage.getItem('secdigest_theme'));
   console.log(`  ✓ localStorage persisted theme: "${savedTheme}"`);
@@ -93,11 +107,53 @@ async function verifyFrontend() {
     throw new Error(`Expected 'dusk' in localStorage, got '${savedTheme}'`);
   }
 
+  // Audit News Cards in Dusk Mode
+  console.log('  Auditing NewsCard surfaces and typography in Dusk mode...');
+  const firstCardDusk = page.locator('[data-testid^="news-card-"]').nth(0);
+  const cardDuskClass = (await firstCardDusk.getAttribute('class')) || '';
+  console.log(`  ✓ Sample NewsCard class in Dusk: "${cardDuskClass.slice(0, 80)}..."`);
+  
+  // Verify Dusk card surfaces are dark (not light paper like bg-[#DFECE6] or bg-[#E5DFD3])
+  if (cardDuskClass.includes('bg-[#DFECE6]') || cardDuskClass.includes('bg-[#EDE8DF]') || cardDuskClass.includes('bg-[#E5DFD3]')) {
+    throw new Error(`NewsCard still has light paper background class in Dusk mode: ${cardDuskClass}`);
+  }
+
+  // Verify Title and Summary light colors in Dusk
+  const titleDuskColor = await page.evaluate(() => {
+    const titleEl = document.querySelector('[data-testid^="news-card-"] h2');
+    return titleEl ? window.getComputedStyle(titleEl).color : '';
+  });
+  console.log(`  ✓ Card title computed color in Dusk: "${titleDuskColor}"`);
+  // rgb(242, 239, 250) is #F2EFFA
+  if (titleDuskColor !== 'rgb(242, 239, 250)') {
+    throw new Error(`Expected Dusk title color rgb(242, 239, 250) [#F2EFFA], got '${titleDuskColor}'`);
+  }
+
+  const summaryDuskColor = await page.evaluate(() => {
+    const pEl = document.querySelector('[data-testid^="news-card-"] p');
+    return pEl ? window.getComputedStyle(pEl).color : '';
+  });
+  console.log(`  ✓ Card summary computed color in Dusk: "${summaryDuskColor}"`);
+  // rgb(212, 205, 228) is #D4CDE4
+  if (summaryDuskColor !== 'rgb(212, 205, 228)') {
+    throw new Error(`Expected Dusk summary color rgb(212, 205, 228) [#D4CDE4], got '${summaryDuskColor}'`);
+  }
+
+  // Verify Action Buttons in Dusk Mode
+  const actionBtnBg = await page.evaluate(() => {
+    const btn = document.querySelector('[data-testid^="btn-bookmark-"]');
+    return btn ? window.getComputedStyle(btn).backgroundColor : '';
+  });
+  console.log(`  ✓ Card bookmark button background in Dusk: "${actionBtnBg}"`);
+
   // Switch back to Paper mode
   await themeBtn.click();
   await page.waitForTimeout(400);
   const revertedThemeText = (await themeBtn.textContent())?.trim();
   console.log(`  ✓ Reverted theme button: "${revertedThemeText}"`);
+
+  const revertedBodyBg = await page.evaluate(() => document.body.style.backgroundColor);
+  console.log(`  ✓ Reverted body backgroundColor: "${revertedBodyBg}" (Expected #E5DFD3)`);
 
   // 4. Test Independent Per-Card Thai Translation Toggle
   console.log('5. Testing Independent Per-Card Thai Translation Toggle...');

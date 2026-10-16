@@ -56,37 +56,37 @@ export default function NewsCard({
     ? {
         AI_FREE: {
           label: '🎁 Free AI & Credits',
-          cardBg: 'bg-[#2D293C] border-[#3F524A]',
-          badgeClass: 'bg-[#264036] text-[#A3E5CA] border-[#33594B]',
-          takeawayBox: 'bg-[#252232] border border-white/5 text-[#D8D2E7]',
-          takeawayLabel: 'text-[#A3E5CA]',
+          cardBg: 'bg-[#1D2E2B] border-[#2E4B45]',
+          badgeClass: 'bg-emerald-950/80 text-emerald-300 border-emerald-700/60',
+          takeawayBox: 'bg-[#161320]/70 border border-white/10 text-[#E2DCF0]',
+          takeawayLabel: 'text-emerald-300',
         },
         CTF_COMPETITION: {
           label: '🏆 CTF Event',
-          cardBg: 'bg-[#2D293C] border-[#4C3F5E]',
-          badgeClass: 'bg-[#3B2D52] text-[#D4C3ED] border-[#4E3C6B]',
-          takeawayBox: 'bg-[#252232] border border-white/5 text-[#D8D2E7]',
-          takeawayLabel: 'text-[#D4C3ED]',
+          cardBg: 'bg-[#28223B] border-[#433963]',
+          badgeClass: 'bg-violet-950/80 text-violet-300 border-violet-700/60',
+          takeawayBox: 'bg-[#161320]/70 border border-white/10 text-[#E2DCF0]',
+          takeawayLabel: 'text-violet-300',
         },
         CVE_SECURITY: {
           label: '🔥 Security Alert',
-          cardBg: 'bg-[#2D293C] border-[#5A3E39]',
-          badgeClass: 'bg-[#482D28] text-[#F5B8AC] border-[#5E3B34]',
-          takeawayBox: 'bg-[#252232] border border-white/5 text-[#D8D2E7]',
-          takeawayLabel: 'text-[#F5B8AC]',
+          cardBg: 'bg-[#332224] border-[#54363A]',
+          badgeClass: 'bg-rose-950/80 text-rose-300 border-rose-700/60',
+          takeawayBox: 'bg-[#161320]/70 border border-white/10 text-[#E2DCF0]',
+          takeawayLabel: 'text-rose-300',
         },
         DEV_CLOUD: {
           label: '☁️ Dev & Cloud',
-          cardBg: 'bg-[#2D293C] border-[#3A4959]',
-          badgeClass: 'bg-[#283848] text-[#A8D3F5] border-[#364D63]',
-          takeawayBox: 'bg-[#252232] border border-white/5 text-[#D8D2E7]',
-          takeawayLabel: 'text-[#A8D3F5]',
+          cardBg: 'bg-[#1E2938] border-[#31455E]',
+          badgeClass: 'bg-sky-950/80 text-sky-300 border-sky-700/60',
+          takeawayBox: 'bg-[#161320]/70 border border-white/10 text-[#E2DCF0]',
+          takeawayLabel: 'text-sky-300',
         },
       }[item.category] || {
         label: item.category,
-        cardBg: 'bg-[#2D293C] border-[#3F3A52]',
+        cardBg: 'bg-[#2A263A] border-[#3E3852]',
         badgeClass: 'bg-[#37324A] text-[#D8D2E7] border-[#4A4462]',
-        takeawayBox: 'bg-[#252232] border border-white/5 text-[#D8D2E7]',
+        takeawayBox: 'bg-[#161320]/70 border border-white/10 text-[#E2DCF0]',
         takeawayLabel: 'text-[#D8D2E7]',
       }
     : {
@@ -167,8 +167,8 @@ export default function NewsCard({
                 isThai
                   ? 'bg-rose-600 text-white border-rose-700 shadow-sm'
                   : isDusk
-                  ? 'bg-[#37324A] text-[#D8D2E7] hover:text-[#FAF7F2] hover:bg-[#433D5B] border-[#4A4462]'
-                  : 'bg-[#E0DAD0] text-[#4A443E] hover:text-[#2A2623] hover:bg-[#D6CEBF] border-[#C8BFB0]'
+                  ? 'bg-[#2A263A] text-[#E2DCF0] hover:text-[#FAF7F2] hover:bg-[#353048] border border-[#433D58]'
+                  : 'bg-[#E0DAD0] text-[#4A443E] hover:text-[#2A2623] hover:bg-[#D6CEBF] border border-[#C8BFB0]'
               }`}
               aria-label="Toggle Thai Translation"
             >
@@ -181,7 +181,7 @@ export default function NewsCard({
       {/* Post Title (100% crisp typography, zero dimming) */}
       <h2
         className={`text-[17px] font-extrabold leading-snug tracking-tight mb-2 ${
-          isDusk ? 'text-[#EAE6F2]' : 'text-[#2A2623]'
+          isDusk ? 'text-[#F2EFFA]' : 'text-[#2A2623]'
         }`}
       >
         {item.title}
@@ -196,7 +196,7 @@ export default function NewsCard({
           exit={{ opacity: 0, y: -3 }}
           transition={{ duration: 0.18 }}
           className={`text-xs sm:text-sm leading-relaxed mb-3.5 font-normal ${
-            isDusk ? 'text-[#C4BED4]' : 'text-[#443E38]'
+            isDusk ? 'text-[#D4CDE4]' : 'text-[#443E38]'
           }`}
         >
           {isThai && item.tldr_th ? item.tldr_th : item.tldr}
@@ -228,13 +228,13 @@ export default function NewsCard({
             transition={{ duration: 0.2 }}
             className={`rounded-2xl p-3.5 mb-4 border shadow-2xs overflow-hidden ${
               isDusk
-                ? 'bg-[#252232] border-[#3F3A52] text-[#D8D2E7]'
-                : 'bg-[#EFECE6]/95 border-[#D2C9B8] text-[#3A3530]'
+                ? 'bg-[#161320]/70 border border-white/10 text-[#E2DCF0]'
+                : 'bg-[#EFECE6]/95 border border-[#D2C9B8] text-[#3A3530]'
             }`}
           >
             <div
               className={`flex items-center gap-1.5 text-xs font-bold mb-2 ${
-                isDusk ? 'text-[#EAE6F2]' : 'text-[#2A2623]'
+                isDusk ? 'text-[#F2EFFA]' : 'text-[#2A2623]'
               }`}
             >
               <span>🧠 ศัพท์เทคนิคในข่าวนี้</span>
@@ -245,13 +245,13 @@ export default function NewsCard({
                   <span
                     className={`font-extrabold px-1.5 py-0.5 rounded text-[11px] mr-1.5 border ${
                       isDusk
-                        ? 'bg-[#342F45] text-[#FAF7F2] border-[#46405C]'
-                        : 'bg-[#E0DAD0] text-[#2A2623] border-[#CEC5B8]'
+                        ? 'bg-[#2A263A] text-[#FAF7F2] border border-[#433D58]'
+                        : 'bg-[#E0DAD0] text-[#2A2623] border border-[#CEC5B8]'
                     }`}
                   >
                     {termObj.term}
                   </span>
-                  <span className={isDusk ? 'text-[#C4BED4]' : 'text-[#443E38]'}>
+                  <span className={isDusk ? 'text-[#D4CDE4]' : 'text-[#443E38]'}>
                     {termObj.meaning}
                   </span>
                 </li>
@@ -264,7 +264,7 @@ export default function NewsCard({
       {/* Interactive Action Bar (Clean non-white pills) */}
       <div
         className={`flex items-center justify-between gap-2 pt-3 border-t ${
-          isDusk ? 'border-[#3F3A52]' : 'border-[#D2C9B8]'
+          isDusk ? 'border-[#433D58]/60' : 'border-[#D2C9B8]'
         }`}
       >
         {/* Bookmark Button */}
@@ -280,7 +280,7 @@ export default function NewsCard({
                 ? 'bg-amber-950/70 text-amber-200 border border-amber-700/60 font-bold shadow-xs'
                 : 'bg-amber-200/90 text-amber-950 border border-amber-300 font-bold shadow-xs'
               : isDusk
-              ? 'bg-[#37324A] hover:bg-[#433D5B] text-[#D8D2E7] hover:text-[#FAF7F2] border border-[#4A4462] shadow-2xs'
+              ? 'bg-[#2A263A] text-[#E2DCF0] border border-[#433D58] hover:bg-[#353048] shadow-2xs'
               : 'bg-[#EFECE6] hover:bg-[#E5DFD3] text-[#4A443E] hover:text-[#2A2623] border border-[#D2C9B8] shadow-2xs'
           }`}
           aria-label={item.is_bookmarked ? 'Remove bookmark' : 'Bookmark item'}
@@ -310,7 +310,7 @@ export default function NewsCard({
                 ? 'bg-emerald-950/70 text-emerald-300 border border-emerald-700/60 font-bold shadow-xs'
                 : 'bg-emerald-200/90 text-emerald-950 border border-emerald-300 font-bold shadow-xs'
               : isDusk
-              ? 'bg-[#37324A] hover:bg-[#433D5B] text-[#D8D2E7] hover:text-[#FAF7F2] border border-[#4A4462] shadow-2xs'
+              ? 'bg-[#2A263A] text-[#E2DCF0] border border-[#433D58] hover:bg-[#353048] shadow-2xs'
               : 'bg-[#EFECE6] hover:bg-[#E5DFD3] text-[#4A443E] hover:text-[#2A2623] border border-[#D2C9B8] shadow-2xs'
           }`}
           aria-label={item.is_read ? 'Mark as unread' : 'Mark as read'}
@@ -337,12 +337,12 @@ export default function NewsCard({
           whileHover={{ y: -1 }}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all touch-manipulation border shadow-2xs ${
             isDusk
-              ? 'bg-[#37324A] hover:bg-[#433D5B] text-[#EAE6F2] hover:text-[#FAF7F2] border-[#4A4462]'
-              : 'bg-[#EFECE6] hover:bg-[#E5DFD3] text-[#2A2623] border-[#D2C9B8]'
+              ? 'bg-[#2A263A] text-[#E2DCF0] border border-[#433D58] hover:bg-[#353048]'
+              : 'bg-[#EFECE6] hover:bg-[#E5DFD3] text-[#2A2623] border border-[#D2C9B8]'
           }`}
         >
           <span>Read Post</span>
-          <ExternalLink className={`w-3 h-3 ${isDusk ? 'text-[#B3ACC5]' : 'text-[#6A635C]'}`} />
+          <ExternalLink className={`w-3 h-3 ${isDusk ? 'text-[#D4CDE4]' : 'text-[#6A635C]'}`} />
         </motion.a>
       </div>
     </article>

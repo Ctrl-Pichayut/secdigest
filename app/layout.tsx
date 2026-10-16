@@ -31,7 +31,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className="bg-[#E5DFD3] text-[#2A2623] min-h-screen font-sans selection:bg-amber-200 antialiased">
+      <body className="min-h-screen font-sans antialiased transition-colors duration-200">
         {children}
       </body>
     </html>

@@ -370,12 +370,93 @@ def record_seen_sources(supabase_client: Client, source_ids: List[str]) -> None:
         logger.warning(f"Failed to record source_ids into public.seen_sources: {e}")
 
 
+MODEL_FALLBACK_CHAIN = [
+    "gemini-3.8-flash",
+    "gemini-3.7-flash",
+    "gemini-3.6-flash",
+    "gemini-2.5-flash",
+]
+
+
+def generate_content_with_fallback(
+    client: genai.Client,
+    prompt: str,
+    response_schema: Any,
+) -> str:
+    """
+    Execute structured output generation iterating through MODEL_FALLBACK_CHAIN
+    whenever an API call raises HTTP 429 (RESOURCE_EXHAUSTED/rate limit), HTTP 503 (UNAVAILABLE),
+    or a transient server error.
+    """
+    last_error: Optional[Exception] = None
+    for idx, model_name in enumerate(MODEL_FALLBACK_CHAIN):
+        is_gemini_3 = model_name.startswith("gemini-3.")
+        config_kwargs: Dict[str, Any] = {
+            "response_mime_type": "application/json",
+            "response_schema": response_schema,
+        }
+        if is_gemini_3:
+            config_kwargs["thinking_config"] = types.ThinkingConfig(thinking_level="low")
+
+        config = types.GenerateContentConfig(**config_kwargs)
+
+        try:
+            logger.info("Attempting LLM call with model '%s'...", model_name)
+            response = client.models.generate_content(
+                model=model_name,
+                contents=prompt,
+                config=config,
+            )
+            raw_text = (response.text or "").strip()
+            if idx > 0:
+                logger.info(
+                    "[LLM] Fallback succeeded! Completed request with '%s' (fallback #%d).",
+                    model_name, idx
+                )
+            else:
+                logger.info("[LLM] Primary '%s' succeeded.", model_name)
+            return raw_text
+        except errors.APIError as e:
+            last_error = e
+            err_msg = str(e).lower()
+            is_transient = any(
+                keyword in err_msg
+                for keyword in [
+                    "429", "resource_exhausted", "quota", "rate limit",
+                    "503", "unavailable", "high demand", "overloaded", "server error"
+                ]
+            )
+            if is_transient and idx < len(MODEL_FALLBACK_CHAIN) - 1:
+                next_model = MODEL_FALLBACK_CHAIN[idx + 1]
+                logger.warning(
+                    "[LLM] Primary %s hit %s limit -> falling back to %s",
+                    model_name,
+                    "429 RPD" if ("429" in err_msg or "resource_exhausted" in err_msg or "quota" in err_msg) else "503/transient",
+                    next_model,
+                )
+                continue
+            logger.error("[LLM] Unrecoverable error or fallback chain exhausted with '%s': %s", model_name, e)
+            raise
+        except Exception as e:
+            last_error = e
+            logger.error("[LLM] Unexpected error with model '%s': %s", model_name, e)
+            if idx < len(MODEL_FALLBACK_CHAIN) - 1:
+                next_model = MODEL_FALLBACK_CHAIN[idx + 1]
+                logger.warning("[LLM] %s encountered error -> falling back to %s...", model_name, next_model)
+                continue
+            raise
+
+    if last_error:
+        raise last_error
+    raise RuntimeError("Model fallback chain failed without returning response.")
+
+
 def curate_with_gemini(
     unseen_items: List[Dict[str, Any]],
     gemini_api_key: str
 ) -> List[CuratedNewsItem]:
     """
-    Send unseen candidate items to gemini-3.8-flash with structured outputs
+    Send unseen candidate items to Gemini structured outputs using MODEL_FALLBACK_CHAIN
     to select at most 5 highest-impact items.
     """
     if not unseen_items:
@@ -418,36 +499,9 @@ Candidate items:
 {json.dumps(unseen_items, indent=2)}
 """
 
-    logger.info("Sending %d candidate items to gemini-3.8-flash for curation...", len(unseen_items))
-    try:
-        response = client.models.generate_content(
-            model="gemini-3.8-flash",
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                response_schema=CuratedDigestResponse,
-                thinking_config=types.ThinkingConfig(thinking_level="low"),
-            ),
-        )
-    except errors.APIError as e:
-        err_msg = str(e).lower()
-        if any(keyword in err_msg for keyword in ["503", "unavailable", "high demand", "429", "resource_exhausted", "quota"]):
-            logger.warning(
-                "gemini-3.8-flash encountered capacity or quota limit (%s). "
-                "Falling back to gemini-2.5-flash to complete curation and persist data...", e
-            )
-            response = client.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    response_schema=CuratedDigestResponse,
-                ),
-            )
-        else:
-            raise
+    logger.info("Sending %d candidate items to Gemini for curation (fallback chain enabled)...", len(unseen_items))
+    raw_text = generate_content_with_fallback(client, prompt, CuratedDigestResponse)
 
-    raw_text = (response.text or "").strip()
     if raw_text.startswith("```"):
         raw_text = re.sub(r"^```(?:json)?\s*", "", raw_text)
         raw_text = re.sub(r"\s*```$", "", raw_text)
@@ -537,34 +591,8 @@ STRICT INSTRUCTIONS:
 News items to translate:
 {json.dumps(chunk, indent=2)}
 """
-        try:
-            response = client.models.generate_content(
-                model="gemini-3.8-flash",
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    response_schema=BackfillBatchResponse,
-                    thinking_config=types.ThinkingConfig(thinking_level="low"),
-                ),
-            )
-        except errors.APIError as e:
-            err_msg = str(e).lower()
-            if any(keyword in err_msg for keyword in ["503", "unavailable", "high demand", "429", "resource_exhausted", "quota"]):
-                logger.warning(
-                    "gemini-3.8-flash encountered capacity or quota limit (%s). Falling back to gemini-2.5-flash...", e
-                )
-                response = client.models.generate_content(
-                    model="gemini-2.5-flash",
-                    contents=prompt,
-                    config=types.GenerateContentConfig(
-                        response_mime_type="application/json",
-                        response_schema=BackfillBatchResponse,
-                    ),
-                )
-            else:
-                raise
+        raw_text = generate_content_with_fallback(client, prompt, BackfillBatchResponse)
 
-        raw_text = (response.text or "").strip()
         if raw_text.startswith("```"):
             raw_text = re.sub(r"^```(?:json)?\s*", "", raw_text)
             raw_text = re.sub(r"\s*```$", "", raw_text)

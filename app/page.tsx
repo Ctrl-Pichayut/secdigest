@@ -49,6 +49,20 @@ export default function HomePage() {
 
   const isDusk = theme === 'dusk';
 
+  // Sync body background color, text color, and meta theme-color with active theme
+  useEffect(() => {
+    if (typeof document !== 'undefined') {
+      const bgColor = isDusk ? '#1E1B29' : '#E5DFD3';
+      const textColor = isDusk ? '#EAE6F2' : '#2A2623';
+      document.body.style.backgroundColor = bgColor;
+      document.body.style.color = textColor;
+      const metaTheme = document.querySelector('meta[name="theme-color"]');
+      if (metaTheme) {
+        metaTheme.setAttribute('content', bgColor);
+      }
+    }
+  }, [isDusk]);
+
   // Time-aware greeting badge based on user's local hour
   const timeGreeting = useMemo(() => {
     const hour = new Date().getHours();
@@ -212,198 +226,203 @@ export default function HomePage() {
 
   return (
     <div
-      className={`max-w-md mx-auto min-h-screen flex flex-col pb-16 transition-colors duration-200 ${
-        isDusk
-          ? 'bg-[#221F2E] text-[#EAE6F2] selection:bg-purple-900'
-          : 'bg-[#E5DFD3] text-[#2A2623] selection:bg-amber-200'
+      className={`min-h-screen w-full transition-colors duration-200 ${
+        isDusk ? 'bg-[#1E1B29] text-[#EAE6F2]' : 'bg-[#E5DFD3] text-[#2A2623]'
       }`}
     >
-      {/* Friendly Conversational Header with Eye-Comfort Palette */}
-      <header
-        className={`px-5 pt-6 pb-4 border-b transition-colors duration-200 ${
-          isDusk ? 'bg-[#221F2E] border-[#363248]' : 'bg-[#E5DFD3] border-[#D2C9B8]'
+      <div
+        className={`max-w-md mx-auto min-h-screen flex flex-col pb-16 transition-colors duration-200 ${
+          isDusk
+            ? 'bg-[#1E1B29] text-[#EAE6F2] selection:bg-purple-900'
+            : 'bg-[#E5DFD3] text-[#2A2623] selection:bg-amber-200'
         }`}
       >
-        <div className="flex items-center justify-between mb-2.5">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-amber-500 via-rose-500 to-violet-600 flex items-center justify-center text-white shadow-md shadow-rose-500/20 text-lg">
-              ⚡
-            </div>
-            <div>
-              <div className="flex items-center gap-1.5">
-                <span
-                  data-testid="time-greeting-badge"
-                  className={`text-[11px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border shadow-2xs ${
-                    isDusk
-                      ? 'bg-[#2B273A] text-[#D8D2E7] border-[#3F3A52]'
-                      : 'bg-[#EDE8DF] text-[#4A443E] border-[#D2C9B8]'
+        {/* Friendly Conversational Header with Eye-Comfort Palette */}
+        <header
+          className={`px-5 pt-6 pb-4 border-b transition-colors duration-200 ${
+            isDusk ? 'bg-[#1E1B29] border-[#342F46]' : 'bg-[#E5DFD3] border-[#D2C9B8]'
+          }`}
+        >
+          <div className="flex items-center justify-between mb-2.5">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-amber-500 via-rose-500 to-violet-600 flex items-center justify-center text-white shadow-md shadow-rose-500/20 text-lg">
+                ⚡
+              </div>
+              <div>
+                <div className="flex items-center gap-1.5">
+                  <span
+                    data-testid="time-greeting-badge"
+                    className={`text-[11px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border shadow-2xs ${
+                      isDusk
+                        ? 'bg-[#2A263A] text-[#D8D2E7] border-[#3E3852]'
+                        : 'bg-[#EDE8DF] text-[#4A443E] border-[#D2C9B8]'
+                    }`}
+                  >
+                    {timeGreeting.badge}
+                  </span>
+                </div>
+                <h1
+                  className={`text-2xl font-black tracking-tight leading-tight mt-0.5 ${
+                    isDusk ? 'text-[#F0ECF8]' : 'text-[#2A2623]'
                   }`}
                 >
-                  {timeGreeting.badge}
-                </span>
+                  SecDigest
+                </h1>
               </div>
-              <h1
-                className={`text-2xl font-black tracking-tight leading-tight mt-0.5 ${
-                  isDusk ? 'text-[#EAE6F2]' : 'text-[#2A2623]'
+            </div>
+
+            <div className="flex items-center gap-2">
+              {/* Eye-Comfort Theme Toggle Button (Paper / Dusk) */}
+              <motion.button
+                type="button"
+                data-testid="btn-theme-toggle"
+                onClick={toggleTheme}
+                whileTap={{ scale: 0.92 }}
+                whileHover={{ y: -1 }}
+                className={`px-3 py-1.5 rounded-2xl text-xs font-bold border transition-all touch-manipulation cursor-pointer shadow-xs ${
+                  isDusk
+                    ? 'bg-[#2A263A] text-[#EAE6F2] border-[#3E3852] hover:bg-[#353048]'
+                    : 'bg-[#EDE8DF] text-[#2A2623] border-[#D2C9B8] hover:bg-[#E2DBD0]'
                 }`}
+                aria-label="Toggle Reading Theme"
               >
-                SecDigest
-              </h1>
+                <span>{isDusk ? '🌆 Dusk' : '☕ Paper'}</span>
+              </motion.button>
+
+              {/* Refresh Button */}
+              <motion.button
+                type="button"
+                data-testid="btn-refresh"
+                onClick={() => loadNews(true)}
+                disabled={refreshing}
+                whileTap={{ scale: 0.92 }}
+                whileHover={{ y: -1 }}
+                className={`p-2.5 rounded-2xl border shadow-xs transition-all touch-manipulation cursor-pointer ${
+                  isDusk
+                    ? 'text-[#D8D2E7] hover:text-[#FAF7F2] bg-[#2A263A] hover:bg-[#353048] border-[#3E3852]'
+                    : 'text-[#4A443E] hover:text-[#2A2623] bg-[#EDE8DF] hover:bg-[#E2DBD0] border-[#D2C9B8]'
+                }`}
+                aria-label="Refresh feed"
+              >
+                <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin text-rose-500' : ''}`} />
+              </motion.button>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            {/* Eye-Comfort Theme Toggle Button (Paper / Dusk) */}
-            <motion.button
-              type="button"
-              data-testid="btn-theme-toggle"
-              onClick={toggleTheme}
-              whileTap={{ scale: 0.92 }}
-              whileHover={{ y: -1 }}
-              className={`px-3 py-1.5 rounded-2xl text-xs font-bold border transition-all touch-manipulation cursor-pointer shadow-xs ${
-                isDusk
-                  ? 'bg-[#2B273A] text-[#EAE6F2] border-[#3F3A52] hover:bg-[#353046]'
-                  : 'bg-[#EDE8DF] text-[#2A2623] border-[#D2C9B8] hover:bg-[#E2DBD0]'
-              }`}
-              aria-label="Toggle Reading Theme"
-            >
-              <span>{isDusk ? '🌆 Dusk' : '☕ Paper'}</span>
-            </motion.button>
-
-            {/* Refresh Button */}
-            <motion.button
-              type="button"
-              data-testid="btn-refresh"
-              onClick={() => loadNews(true)}
-              disabled={refreshing}
-              whileTap={{ scale: 0.92 }}
-              whileHover={{ y: -1 }}
-              className={`p-2.5 rounded-2xl border shadow-xs transition-all touch-manipulation cursor-pointer ${
-                isDusk
-                  ? 'text-[#D8D2E7] hover:text-[#FAF7F2] bg-[#2B273A] hover:bg-[#353046] border-[#3F3A52]'
-                  : 'text-[#4A443E] hover:text-[#2A2623] bg-[#EDE8DF] hover:bg-[#E2DBD0] border-[#D2C9B8]'
-              }`}
-              aria-label="Refresh feed"
-            >
-              <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin text-rose-500' : ''}`} />
-            </motion.button>
-          </div>
-        </div>
-
-        <p
-          className={`text-xs font-medium mb-3 pl-1 ${
-            isDusk ? 'text-[#B3ACC5]' : 'text-[#5A544E]'
-          }`}
-        >
-          {formattedDate} • {timeGreeting.subtitle}
-        </p>
-
-        {/* Interactive Daily Progress Bar */}
-        <div
-          className={`rounded-2xl p-3.5 border shadow-xs space-y-2 ${
-            isDusk
-              ? 'bg-[#2B273A] border-[#3F3A52] text-[#EAE6F2]'
-              : 'bg-[#EDE8DF] border-[#D8D0C0] text-[#2A2623]'
-          }`}
-        >
-          <div className="flex items-center justify-between text-xs font-bold">
-            <span data-testid="progress-text">
-              {totalCount > 0 && totalReadCount === totalCount
-                ? `All ${totalCount} posts caught up today! 🎉`
-                : `${totalReadCount} of ${totalCount} posts caught up today 🎉`}
-            </span>
-            <span
-              data-testid="unread-counter"
-              className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${
-                unreadCount > 0
-                  ? isDusk
-                    ? 'bg-rose-950/70 text-rose-200 border-rose-700/60'
-                    : 'bg-rose-200/90 text-rose-950 border-rose-300'
-                  : isDusk
-                  ? 'bg-emerald-950/70 text-emerald-200 border-emerald-700/60'
-                  : 'bg-emerald-200/90 text-emerald-950 border-emerald-300'
-              }`}
-            >
-              {unreadCount > 0 ? `${unreadCount} unread` : 'All caught up'}
-            </span>
-          </div>
-
-          {/* Animated gradient bar */}
-          <div
-            className={`w-full rounded-full h-2 overflow-hidden border ${
-              isDusk ? 'bg-[#201D2C] border-[#37324A]' : 'bg-[#DCD5C9] border-[#CEC5B4]'
-            }`}
-          >
-            <motion.div
-              data-testid="progress-bar-fill"
-              className="h-full bg-gradient-to-r from-amber-400 via-rose-400 to-violet-500 rounded-full"
-              initial={false}
-              animate={{ width: `${percentRead}%` }}
-              transition={{ duration: 0.35, ease: 'easeOut' }}
-            />
-          </div>
-        </div>
-      </header>
-
-      {/* Sticky Category Filter Bar (Zero glare backdrop) */}
-      <nav
-        aria-label="Category navigation"
-        className={`sticky top-0 z-30 backdrop-blur-md border-b px-4 py-3 flex items-center gap-2 overflow-x-auto no-scrollbar shadow-2xs transition-colors duration-200 ${
-          isDusk ? 'bg-[#221F2E]/90 border-[#363248]' : 'bg-[#E5DFD3]/90 border-[#D2C9B8]'
-        }`}
-      >
-        {FILTER_TABS.map((tab) => {
-          const isActive = activeFilter === tab.id;
-          return (
-            <motion.button
-              key={tab.id}
-              type="button"
-              data-testid={`filter-${tab.id.toLowerCase()}`}
-              onClick={() => setActiveFilter(tab.id)}
-              whileTap={{ scale: 0.94 }}
-              className={`shrink-0 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all touch-manipulation cursor-pointer ${
-                isActive
-                  ? isDusk
-                    ? 'bg-[#EAE6F2] text-[#221F2E] shadow-sm border border-[#EAE6F2]'
-                    : 'bg-[#2A2623] text-[#FAF7F2] shadow-sm border border-[#2A2623]'
-                  : isDusk
-                  ? 'bg-[#2B273A] text-[#B3ACC5] border border-[#3F3A52] hover:bg-[#353046] hover:text-[#EAE6F2]'
-                  : 'bg-[#EDE8DF] text-[#5A544E] border border-[#D2C9B8] hover:bg-[#E2DBD0] hover:text-[#2A2623]'
-              }`}
-            >
-              {tab.label}
-            </motion.button>
-          );
-        })}
-      </nav>
-
-      {/* Feed Content Area */}
-      <main className="flex-1 px-4 py-4 space-y-3.5">
-        {/* Quick Batch Action Bar when unread items exist */}
-        {!loading && unreadItems.length > 0 && (
-          <div
-            className={`flex items-center justify-between px-1 text-xs pb-1 ${
+          <p
+            className={`text-xs font-medium mb-3 pl-1 ${
               isDusk ? 'text-[#B3ACC5]' : 'text-[#5A544E]'
             }`}
           >
-            <span className="font-medium">
-              Showing {unreadItems.length} unread {unreadItems.length === 1 ? 'post' : 'posts'}
-            </span>
-            <button
-              type="button"
-              data-testid="btn-mark-all-read"
-              onClick={handleMarkAllRead}
-              className={`flex items-center gap-1 text-xs font-semibold transition-colors active:scale-95 touch-manipulation cursor-pointer ${
-                isDusk
-                  ? 'text-rose-400 hover:text-rose-300'
-                  : 'text-rose-700 hover:text-rose-900'
+            {formattedDate} • {timeGreeting.subtitle}
+          </p>
+
+          {/* Interactive Daily Progress Bar */}
+          <div
+            className={`rounded-2xl p-3.5 border shadow-xs space-y-2 ${
+              isDusk
+                ? 'bg-[#2A263A] border-[#3E3852] text-[#F0ECF8]'
+                : 'bg-[#EDE8DF] border-[#D8D0C0] text-[#2A2623]'
+            }`}
+          >
+            <div className="flex items-center justify-between text-xs font-bold">
+              <span data-testid="progress-text">
+                {totalCount > 0 && totalReadCount === totalCount
+                  ? `All ${totalCount} posts caught up today! 🎉`
+                  : `${totalReadCount} of ${totalCount} posts caught up today 🎉`}
+              </span>
+              <span
+                data-testid="unread-counter"
+                className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${
+                  unreadCount > 0
+                    ? isDusk
+                      ? 'bg-rose-950/70 text-rose-200 border-rose-700/60'
+                      : 'bg-rose-200/90 text-rose-950 border-rose-300'
+                    : isDusk
+                    ? 'bg-emerald-950/70 text-emerald-200 border-emerald-700/60'
+                    : 'bg-emerald-200/90 text-emerald-950 border-emerald-300'
+                }`}
+              >
+                {unreadCount > 0 ? `${unreadCount} unread` : 'All caught up'}
+              </span>
+            </div>
+
+            {/* Animated gradient bar */}
+            <div
+              className={`w-full rounded-full h-2 overflow-hidden border ${
+                isDusk ? 'bg-[#1E1B29] border-[#342F46]' : 'bg-[#DCD5C9] border-[#CEC5B4]'
               }`}
             >
-              <CheckCheck className="w-3.5 h-3.5" />
-              <span>Mark all read</span>
-            </button>
+              <motion.div
+                data-testid="progress-bar-fill"
+                className="h-full bg-gradient-to-r from-amber-400 via-rose-400 to-violet-500 rounded-full"
+                initial={false}
+                animate={{ width: `${percentRead}%` }}
+                transition={{ duration: 0.35, ease: 'easeOut' }}
+              />
+            </div>
           </div>
-        )}
+        </header>
+
+        {/* Sticky Category Filter Bar (Zero glare backdrop) */}
+        <nav
+          aria-label="Category navigation"
+          className={`sticky top-0 z-30 backdrop-blur-md border-b px-4 py-3 flex items-center gap-2 overflow-x-auto no-scrollbar shadow-2xs transition-colors duration-200 ${
+            isDusk ? 'bg-[#1E1B29]/95 border-[#342F46]' : 'bg-[#E5DFD3]/90 border-[#D2C9B8]'
+          }`}
+        >
+          {FILTER_TABS.map((tab) => {
+            const isActive = activeFilter === tab.id;
+            return (
+              <motion.button
+                key={tab.id}
+                type="button"
+                data-testid={`filter-${tab.id.toLowerCase()}`}
+                onClick={() => setActiveFilter(tab.id)}
+                whileTap={{ scale: 0.94 }}
+                className={`shrink-0 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all touch-manipulation cursor-pointer ${
+                  isActive
+                    ? isDusk
+                      ? 'bg-[#F0ECF8] text-[#1E1B29] shadow-sm border border-[#F0ECF8]'
+                      : 'bg-[#2A2623] text-[#FAF7F2] shadow-sm border border-[#2A2623]'
+                    : isDusk
+                    ? 'bg-[#2A263A] text-[#D5CEE6] border border-[#3E3852] hover:bg-[#353048] hover:text-[#FAF7F2]'
+                    : 'bg-[#EDE8DF] text-[#5A544E] border border-[#D2C9B8] hover:bg-[#E2DBD0] hover:text-[#2A2623]'
+                }`}
+              >
+                {tab.label}
+              </motion.button>
+            );
+          })}
+        </nav>
+
+        {/* Feed Content Area */}
+        <main className="flex-1 px-4 py-4 space-y-3.5">
+          {/* Quick Batch Action Bar when unread items exist */}
+          {!loading && unreadItems.length > 0 && (
+            <div
+              className={`flex items-center justify-between px-1 text-xs pb-1 ${
+                isDusk ? 'text-[#D5CEE6]' : 'text-[#5A544E]'
+              }`}
+            >
+              <span className="font-medium">
+                Showing {unreadItems.length} unread {unreadItems.length === 1 ? 'post' : 'posts'}
+              </span>
+              <button
+                type="button"
+                data-testid="btn-mark-all-read"
+                onClick={handleMarkAllRead}
+                className={`flex items-center gap-1 text-xs font-semibold transition-colors active:scale-95 touch-manipulation cursor-pointer ${
+                  isDusk
+                    ? 'text-rose-400 hover:text-rose-300'
+                    : 'text-rose-700 hover:text-rose-900'
+                }`}
+              >
+                <CheckCheck className="w-3.5 h-3.5" />
+                <span>Mark all read</span>
+              </button>
+            </div>
+          )}
 
         {/* Error State */}
         {error && (
@@ -433,62 +452,62 @@ export default function HomePage() {
                 key={n}
                 className={`rounded-3xl p-5 space-y-3 animate-pulse shadow-xs border ${
                   isDusk
-                    ? 'bg-[#2D293C] border-[#3F3A52]'
+                    ? 'bg-[#2A263A] border-[#3E3852]'
                     : 'bg-[#EDE8DF] border-[#D2C9B8]'
                 }`}
               >
                 <div className="flex justify-between items-center">
                   <div
                     className={`w-28 h-6 rounded-full ${
-                      isDusk ? 'bg-[#3B354D]' : 'bg-[#DCD5C9]'
+                      isDusk ? 'bg-[#3E3852]' : 'bg-[#DCD5C9]'
                     }`}
                   />
                   <div
                     className={`w-12 h-4 rounded ${
-                      isDusk ? 'bg-[#3B354D]' : 'bg-[#DCD5C9]'
+                      isDusk ? 'bg-[#3E3852]' : 'bg-[#DCD5C9]'
                     }`}
                   />
                 </div>
                 <div
                   className={`w-4/5 h-5 rounded-lg ${
-                    isDusk ? 'bg-[#3B354D]' : 'bg-[#DCD5C9]'
+                    isDusk ? 'bg-[#3E3852]' : 'bg-[#DCD5C9]'
                   }`}
                 />
                 <div className="space-y-1.5">
                   <div
                     className={`w-full h-3.5 rounded ${
-                      isDusk ? 'bg-[#3B354D]/70' : 'bg-[#DCD5C9]/70'
+                      isDusk ? 'bg-[#3E3852]/70' : 'bg-[#DCD5C9]/70'
                     }`}
                   />
                   <div
                     className={`w-5/6 h-3.5 rounded ${
-                      isDusk ? 'bg-[#3B354D]/70' : 'bg-[#DCD5C9]/70'
+                      isDusk ? 'bg-[#3E3852]/70' : 'bg-[#DCD5C9]/70'
                     }`}
                   />
                 </div>
                 <div
                   className={`h-16 rounded-2xl ${
-                    isDusk ? 'bg-[#252232]' : 'bg-[#E5DFD3]'
+                    isDusk ? 'bg-[#161320]' : 'bg-[#E5DFD3]'
                   }`}
                 />
                 <div
                   className={`flex justify-between pt-2 border-t ${
-                    isDusk ? 'border-[#3F3A52]' : 'border-[#D2C9B8]'
+                    isDusk ? 'border-[#3E3852]' : 'border-[#D2C9B8]'
                   }`}
                 >
                   <div
                     className={`w-16 h-7 rounded-xl ${
-                      isDusk ? 'bg-[#3B354D]' : 'bg-[#DCD5C9]'
+                      isDusk ? 'bg-[#3E3852]' : 'bg-[#DCD5C9]'
                     }`}
                   />
                   <div
                     className={`w-20 h-7 rounded-xl ${
-                      isDusk ? 'bg-[#3B354D]' : 'bg-[#DCD5C9]'
+                      isDusk ? 'bg-[#3E3852]' : 'bg-[#DCD5C9]'
                     }`}
                   />
                   <div
                     className={`w-16 h-7 rounded-xl ${
-                      isDusk ? 'bg-[#3B354D]' : 'bg-[#DCD5C9]'
+                      isDusk ? 'bg-[#3E3852]' : 'bg-[#DCD5C9]'
                     }`}
                   />
                 </div>
@@ -502,7 +521,7 @@ export default function HomePage() {
           <div
             className={`rounded-3xl border-2 border-dashed p-8 text-center my-8 shadow-xs ${
               isDusk
-                ? 'bg-[#2B273A] border-[#3F3A52]'
+                ? 'bg-[#2A263A] border-[#3E3852]'
                 : 'bg-[#EDE8DF] border-[#D2C9B8]'
             }`}
           >
@@ -517,14 +536,14 @@ export default function HomePage() {
             </div>
             <h3
               className={`text-sm font-bold mb-1 ${
-                isDusk ? 'text-[#EAE6F2]' : 'text-[#2A2623]'
+                isDusk ? 'text-[#F0ECF8]' : 'text-[#2A2623]'
               }`}
             >
               {activeFilter === 'SAVED' ? 'No Saved Posts Yet' : 'No Posts in This Topic'}
             </h3>
             <p
               className={`text-xs max-w-xs mx-auto leading-relaxed ${
-                isDusk ? 'text-[#B3ACC5]' : 'text-[#5A544E]'
+                isDusk ? 'text-[#D5CEE6]' : 'text-[#5A544E]'
               }`}
             >
               {activeFilter === 'SAVED'
@@ -567,7 +586,7 @@ export default function HomePage() {
               whileTap={{ scale: 0.98 }}
               className={`w-full flex items-center justify-between p-3.5 rounded-2xl border transition-all font-bold text-xs touch-manipulation cursor-pointer shadow-xs ${
                 isDusk
-                  ? 'bg-[#2B273A] hover:bg-[#353046] border-[#3F3A52] text-[#EAE6F2]'
+                  ? 'bg-[#2A263A] hover:bg-[#353048] border-[#3E3852] text-[#F0ECF8]'
                   : 'bg-[#EDE8DF] hover:bg-[#E2DBD0] border-[#D2C9B8] text-[#2A2623]'
               }`}
             >
@@ -585,7 +604,7 @@ export default function HomePage() {
               </div>
               <span
                 className={`text-[11px] font-semibold flex items-center gap-1 ${
-                  isDusk ? 'text-[#B3ACC5]' : 'text-[#6A635C]'
+                  isDusk ? 'text-[#D5CEE6]' : 'text-[#6A635C]'
                 }`}
               >
                 {readDrawerOpen ? 'Hide' : 'Tap to expand'}
@@ -632,6 +651,7 @@ export default function HomePage() {
           </div>
         )}
       </main>
+      </div>
     </div>
   );
 }
