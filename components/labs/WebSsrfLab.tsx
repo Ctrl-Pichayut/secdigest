@@ -1,7 +1,9 @@
 'use client';
 
-import React, { useMemo, useRef, useState } from 'react';
-import { Chip, Hint, LabButton, StageTracker, Term, TermLine, WinBanner } from './labUi';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Chip, FeedbackBar, Hint, LabButton, StageTracker, TermLog, WinBanner } from './labUi';
+import { useProgressReporter } from '@/lib/ctf/progress';
+import { useFeedback } from '@/lib/ctf/feedback';
 
 /**
  * Simulated SSRF -> metadata -> LFI chain for the Songkran Photo Gallery
@@ -101,7 +103,7 @@ function simulate(raw: string): { lines: Line[]; effects: Effects } {
           effects: { bypass: true },
         };
       }
-      if (path === '/panel-b08a6498') {
+      if (path === '/panel-b08a6498' || path === '/panel-b08a6498/download') {
         const fileV = fileParam(query);
         if (fileV === null) {
           return {
@@ -256,7 +258,9 @@ const STAGES = [
   'Read the flag with ../../',
 ];
 
-export default function WebSsrfLab({ isDusk }: { isDusk: boolean }) {
+export default function WebSsrfLab({ isDusk, slug = 'web-ssrf' }: { isDusk: boolean; slug?: string }) {
+  const { report, clear } = useProgressReporter(slug);
+  const { cue } = useFeedback();
   const [input, setInput] = useState('https://example.com/songkran.jpg');
   const [log, setLog] = useState<Line[]>([
     { tone: 'dim', text: 'The import form fetches any URL you give it (POST /api/import?url=...).' },
@@ -271,7 +275,6 @@ export default function WebSsrfLab({ isDusk }: { isDusk: boolean }) {
     flag: false,
   });
   const [convIn, setConvIn] = useState('127.0.0.1');
-  const logRef = useRef<HTMLDivElement>(null);
 
   const current = useMemo(() => {
     if (eff.flag) return 4;
@@ -281,12 +284,32 @@ export default function WebSsrfLab({ isDusk }: { isDusk: boolean }) {
     return 0;
   }, [eff]);
 
+  // Persist progress whenever the learner advances a stage.
+  useEffect(() => {
+    if (current > 0 || eff.flag) {
+      report(current, STAGES.length, eff.flag ? 'solved' : 'in-progress');
+    }
+  }, [current, eff.flag, report]);
+
   const run = (url?: string) => {
     const target = (url ?? input).trim();
     if (!target) return;
     if (url) setInput(url);
     const { lines, effects } = simulate(target);
     setLog((prev) => [...prev, { tone: 'dim', text: '────────────' }, ...lines]);
+
+    // Audio/haptic feedback matched to the outcome.
+    const advanced =
+      (!eff.bypass && effects.bypass) ||
+      (!eff.metadata && effects.metadata) ||
+      (!eff.services && effects.services) ||
+      (!eff.consolePath && effects.consolePath) ||
+      (!eff.consoleVisited && effects.consoleVisited);
+    if (effects.flag) cue('success');
+    else if (advanced) cue('step');
+    else if (lines.some((l) => l.tone === 'bad')) cue('error');
+    else cue('tap');
+
     setEff((prev) => ({
       bypass: prev.bypass || !!effects.bypass,
       metadata: prev.metadata || !!effects.metadata,
@@ -295,12 +318,11 @@ export default function WebSsrfLab({ isDusk }: { isDusk: boolean }) {
       consoleVisited: prev.consoleVisited || !!effects.consoleVisited,
       flag: prev.flag || !!effects.flag,
     }));
-    requestAnimationFrame(() => {
-      logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: 'smooth' });
-    });
   };
 
   const reset = () => {
+    cue('tap');
+    clear();
     setLog([
       { tone: 'dim', text: 'Reset. The import form fetches any URL you give it.' },
     ]);
@@ -344,9 +366,18 @@ export default function WebSsrfLab({ isDusk }: { isDusk: boolean }) {
 
   return (
     <div className="space-y-4">
-      <StageTracker stages={STAGES} current={current} isDusk={isDusk} />
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex-1">
+          <StageTracker stages={STAGES} current={current} isDusk={isDusk} />
+        </div>
+      </div>
+      <FeedbackBar isDusk={isDusk} />
 
-      {!eff.flag && <Hint isDusk={isDusk}>{hint}</Hint>}
+      {!eff.flag && (
+        <Hint isDusk={isDusk} swapKey={current}>
+          {hint}
+        </Hint>
+      )}
 
       {/* Request builder */}
       <div
@@ -407,14 +438,27 @@ export default function WebSsrfLab({ isDusk }: { isDusk: boolean }) {
             }`}
           />
           <span className={`text-xs font-mono ${isDusk ? 'text-[#6f6a85]' : 'text-[#9a9388]'}`}>=</span>
-          <code
-            className={`font-mono text-xs font-bold px-2 py-1 rounded-lg ${
-              isDusk ? 'bg-[#2A263A] text-amber-300' : 'bg-[#E8CFC2] text-[#5C2E1B]'
+          <button
+            type="button"
+            disabled={decimal === null}
+            onClick={() => {
+              if (decimal === null) return;
+              cue('tap');
+              setInput(`http://${decimal}/`);
+            }}
+            title={decimal === null ? undefined : 'Tap to drop into the URL above'}
+            className={`font-mono text-xs font-bold px-2.5 py-1.5 rounded-lg transition-colors touch-manipulation cursor-pointer disabled:cursor-default active:scale-95 ${
+              isDusk ? 'bg-[#2A263A] text-amber-300 hover:bg-[#353048]' : 'bg-[#E8CFC2] text-[#5C2E1B] hover:bg-[#dcc0b2]'
             }`}
           >
             {decimal === null ? '—' : decimal}
-          </code>
+          </button>
         </div>
+        {decimal !== null && (
+          <div className={`text-[10px] mt-1.5 ${isDusk ? 'text-[#6f6a85]' : 'text-[#9a9388]'}`}>
+            Tap the number to drop <span className="font-mono">http://{decimal}/</span> into the URL.
+          </div>
+        )}
         <div className="flex items-center gap-2 pt-2 overflow-x-auto no-scrollbar">
           {['127.0.0.1', '169.254.169.254'].map((ip) => (
             <Chip key={ip} isDusk={isDusk} onClick={() => setConvIn(ip)}>
@@ -425,15 +469,7 @@ export default function WebSsrfLab({ isDusk }: { isDusk: boolean }) {
       </div>
 
       {/* Terminal log */}
-      <Term className="max-h-80">
-        <div ref={logRef} className="max-h-72 overflow-y-auto no-scrollbar">
-          {log.map((l, i) => (
-            <TermLine key={i} tone={l.tone}>
-              {l.text}
-            </TermLine>
-          ))}
-        </div>
-      </Term>
+      <TermLog lines={log} />
 
       {eff.flag && <WinBanner flag={FLAG} isDusk={isDusk} />}
 

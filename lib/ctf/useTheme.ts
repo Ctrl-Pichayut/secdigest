@@ -5,49 +5,83 @@ import { useCallback, useEffect, useState } from 'react';
 export type Theme = 'paper' | 'dusk';
 
 /**
- * Shared reading-theme hook. Uses the SAME localStorage key as the
- * home feed ('secdigest_theme'), so toggling the theme anywhere in the
- * app stays in sync. Mirrors the body background / meta theme-color
- * behaviour from app/page.tsx.
+ * Shared reading-theme store. Uses the SAME localStorage key as the home
+ * feed ('secdigest_theme') and a module-level subscription so toggling the
+ * theme anywhere in the app updates every mounted component at once (home
+ * feed, Solved CTF list, write-up pages). Mirrors the body background / meta
+ * theme-color behaviour app-wide.
  */
+
+const KEY = 'secdigest_theme';
+
+let current: Theme = 'paper';
+let hydrated = false;
+const listeners = new Set<() => void>();
+
+function readInitial(): Theme {
+  try {
+    const saved = localStorage.getItem(KEY);
+    if (saved === 'dusk' || saved === 'paper') return saved;
+  } catch {
+    // ignore storage access errors (private mode, etc.)
+  }
+  return 'paper';
+}
+
+function applyChrome(theme: Theme) {
+  if (typeof document === 'undefined') return;
+  const isDusk = theme === 'dusk';
+  const bg = isDusk ? '#1E1B29' : '#E5DFD3';
+  const fg = isDusk ? '#EAE6F2' : '#2A2623';
+  document.body.style.backgroundColor = bg;
+  document.body.style.color = fg;
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute('content', bg);
+}
+
+function setTheme(next: Theme) {
+  current = next;
+  try {
+    localStorage.setItem(KEY, next);
+  } catch {
+    // ignore
+  }
+  applyChrome(next);
+  listeners.forEach((fn) => fn());
+}
+
 export function useTheme() {
-  const [theme, setTheme] = useState<Theme>('paper');
+  const [, force] = useState(0);
 
-  // Load persisted theme once on mount.
+  // Hydrate from storage once, app-wide, then keep chrome in sync.
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem('secdigest_theme');
-      if (saved === 'dusk' || saved === 'paper') {
-        setTheme(saved);
-      }
-    } catch {
-      // ignore storage access errors (private mode, etc.)
+    if (!hydrated) {
+      hydrated = true;
+      current = readInitial();
+      applyChrome(current);
+      listeners.forEach((fn) => fn());
     }
+    const fn = () => force((n) => n + 1);
+    listeners.add(fn);
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === KEY && (e.newValue === 'dusk' || e.newValue === 'paper')) {
+        current = e.newValue;
+        applyChrome(current);
+        fn();
+      }
+    };
+    window.addEventListener('storage', onStorage);
+    return () => {
+      listeners.delete(fn);
+      window.removeEventListener('storage', onStorage);
+    };
   }, []);
-
-  // Keep the page chrome in sync with the active theme.
-  useEffect(() => {
-    if (typeof document === 'undefined') return;
-    const isDusk = theme === 'dusk';
-    const bg = isDusk ? '#1E1B29' : '#E5DFD3';
-    const fg = isDusk ? '#EAE6F2' : '#2A2623';
-    document.body.style.backgroundColor = bg;
-    document.body.style.color = fg;
-    const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute('content', bg);
-  }, [theme]);
 
   const toggle = useCallback(() => {
-    setTheme((prev) => {
-      const next: Theme = prev === 'paper' ? 'dusk' : 'paper';
-      try {
-        localStorage.setItem('secdigest_theme', next);
-      } catch {
-        // ignore
-      }
-      return next;
-    });
+    setTheme(current === 'paper' ? 'dusk' : 'paper');
   }, []);
 
-  return { theme, isDusk: theme === 'dusk', toggle };
+  const set = useCallback((t: Theme) => setTheme(t), []);
+
+  return { theme: current, isDusk: current === 'dusk', toggle, set };
 }

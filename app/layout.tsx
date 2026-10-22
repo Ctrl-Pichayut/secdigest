@@ -1,5 +1,11 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
+import Providers from '@/components/Providers';
+import BottomNav from '@/components/BottomNav';
+
+// Runs before first paint: applies the saved reading theme to the body so dusk
+// users never see a paper-colored flash on load. Kept tiny and dependency-free.
+const themeInitScript = `(function(){try{var t=localStorage.getItem('secdigest_theme');if(t==='dusk'){document.body.style.backgroundColor='#1E1B29';document.body.style.color='#EAE6F2';var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('content','#1E1B29');}}catch(e){}})();`;
 
 export const metadata: Metadata = {
   title: 'SecDigest | CyberSec & Tech Intelligence',
@@ -32,7 +38,11 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="min-h-screen font-sans antialiased transition-colors duration-200">
-        {children}
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+        <Providers>
+          {children}
+          <BottomNav />
+        </Providers>
       </body>
     </html>
   );

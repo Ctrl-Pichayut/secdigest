@@ -3,9 +3,10 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { ArrowLeft, ChevronDown, Flag, Lightbulb } from 'lucide-react';
+import { motion, AnimatePresence, useScroll, useSpring } from 'framer-motion';
+import { ArrowLeft, ChevronDown, Flag, Lightbulb, FlaskConical, ChevronRight } from 'lucide-react';
 import { useTheme } from '@/lib/ctf/useTheme';
-import { getWriteup, CATEGORY_ACCENT } from '@/lib/ctf/writeups';
+import { getWriteup, CATEGORY_ACCENT, WRITEUPS } from '@/lib/ctf/writeups';
 import WebSsrfLab from '@/components/labs/WebSsrfLab';
 import CryptoNibbleLab from '@/components/labs/CryptoNibbleLab';
 import PwnRaceLab from '@/components/labs/PwnRaceLab';
@@ -29,7 +30,8 @@ function Collapsible({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center justify-between p-3.5 touch-manipulation cursor-pointer"
+        aria-expanded={open}
+        className="w-full flex items-center justify-between p-4 touch-manipulation cursor-pointer min-h-[48px]"
       >
         <span className={`text-sm font-bold flex items-center gap-2 ${isDusk ? 'text-[#F0ECF8]' : 'text-[#2A2623]'}`}>
           <span>{emoji}</span>
@@ -39,7 +41,20 @@ function Collapsible({
           className={`w-4 h-4 transition-transform duration-200 ${open ? 'rotate-180' : ''} ${isDusk ? 'text-[#B3ACC5]' : 'text-[#6A635C]'}`}
         />
       </button>
-      {open && <div className={`px-3.5 pb-4 pt-0 ${isDusk ? 'text-[#D4CDE4]' : 'text-[#443E38]'}`}>{children}</div>}
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div
+            key="content"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.26, ease: 'easeInOut' }}
+            className="overflow-hidden"
+          >
+            <div className={`px-4 pb-4 pt-0 ${isDusk ? 'text-[#D4CDE4]' : 'text-[#443E38]'}`}>{children}</div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -49,6 +64,10 @@ export default function WriteupDetailPage() {
   const params = useParams();
   const slug = Array.isArray(params.slug) ? params.slug[0] : params.slug;
   const w = slug ? getWriteup(slug) : undefined;
+
+  // Reading-progress bar driven by page scroll.
+  const { scrollYProgress } = useScroll();
+  const progressX = useSpring(scrollYProgress, { stiffness: 120, damping: 30, restDelta: 0.001 });
 
   if (!w) {
     return (
@@ -68,30 +87,59 @@ export default function WriteupDetailPage() {
 
   const Lab = w.lab === 'web-ssrf' ? WebSsrfLab : w.lab === 'crypto-nibble' ? CryptoNibbleLab : PwnRaceLab;
 
+  // Next write-up in the list (wraps around) for sequential reading.
+  const idx = WRITEUPS.findIndex((x) => x.slug === w.slug);
+  const next = WRITEUPS[(idx + 1) % WRITEUPS.length];
+  const hasNext = WRITEUPS.length > 1 && next.slug !== w.slug;
+
+  const scrollToLab = () => {
+    document.getElementById('interactive-lab')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
   return (
     <div className={`min-h-screen w-full ${isDusk ? 'bg-[#1E1B29] text-[#EAE6F2]' : 'bg-[#E5DFD3] text-[#2A2623]'}`}>
-      <div className={`max-w-md mx-auto min-h-screen flex flex-col pb-16 ${isDusk ? 'bg-[#1E1B29]' : 'bg-[#E5DFD3]'}`}>
+      <div className={`max-w-md mx-auto min-h-screen flex flex-col pb-28 ${isDusk ? 'bg-[#1E1B29]' : 'bg-[#E5DFD3]'}`}>
         {/* Header */}
         <header className={`sticky top-0 z-30 backdrop-blur-md px-5 pt-5 pb-3 border-b ${isDusk ? 'bg-[#1E1B29]/95 border-[#342F46]' : 'bg-[#E5DFD3]/90 border-[#D2C9B8]'}`}>
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-2">
             <Link
               href="/solved"
-              className={`inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-2xl border transition-all touch-manipulation ${
+              className={`inline-flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-2xl border transition-all touch-manipulation min-h-[40px] ${
                 isDusk ? 'bg-[#2A263A] text-[#E2DCF0] border-[#3E3852] hover:bg-[#353048]' : 'bg-[#EDE8DF] text-[#2A2623] border-[#D2C9B8] hover:bg-[#E2DBD0]'
               }`}
             >
               <ArrowLeft className="w-3.5 h-3.5" />
               Solved CTF
             </Link>
-            <button
-              type="button"
-              onClick={toggle}
-              className={`px-3 py-1.5 rounded-2xl text-xs font-bold border transition-all touch-manipulation ${
-                isDusk ? 'bg-[#2A263A] text-[#EAE6F2] border-[#3E3852]' : 'bg-[#EDE8DF] text-[#2A2623] border-[#D2C9B8]'
-              }`}
-            >
-              {isDusk ? '🌆' : '☕'}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={scrollToLab}
+                className={`inline-flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-2xl border transition-all touch-manipulation min-h-[40px] ${
+                  isDusk ? 'bg-[#2A263A] text-[#E2DCF0] border-[#3E3852] hover:bg-[#353048]' : 'bg-[#EDE8DF] text-[#2A2623] border-[#D2C9B8] hover:bg-[#E2DBD0]'
+                }`}
+              >
+                <FlaskConical className="w-3.5 h-3.5" />
+                Lab
+              </button>
+              <button
+                type="button"
+                onClick={toggle}
+                aria-label="Toggle reading theme"
+                className={`px-3 py-2 rounded-2xl text-xs font-bold border transition-all touch-manipulation min-h-[40px] min-w-[40px] ${
+                  isDusk ? 'bg-[#2A263A] text-[#EAE6F2] border-[#3E3852]' : 'bg-[#EDE8DF] text-[#2A2623] border-[#D2C9B8]'
+                }`}
+              >
+                {isDusk ? '🌆' : '☕'}
+              </button>
+            </div>
+          </div>
+          {/* reading progress */}
+          <div className={`mt-2.5 h-1 rounded-full overflow-hidden ${isDusk ? 'bg-[#342F46]' : 'bg-[#D2C9B8]'}`}>
+            <motion.div
+              className="h-full origin-left bg-gradient-to-r from-amber-400 via-rose-400 to-violet-500"
+              style={{ scaleX: progressX }}
+            />
           </div>
         </header>
 
@@ -132,7 +180,7 @@ export default function WriteupDetailPage() {
           </Collapsible>
 
           {/* THE LAB */}
-          <div>
+          <div id="interactive-lab" className="scroll-mt-20">
             <div className={`flex items-center gap-2 mb-2.5 px-1`}>
               <span className="text-lg">🧪</span>
               <h2 className={`text-sm font-black uppercase tracking-wide ${isDusk ? 'text-[#F0ECF8]' : 'text-[#2A2623]'}`}>
@@ -140,7 +188,7 @@ export default function WriteupDetailPage() {
               </h2>
             </div>
             <div className={`rounded-3xl p-4 border-2 ${isDusk ? 'bg-[#211d2e] border-[#3E3852]' : 'bg-[#efe9df] border-[#D2C9B8]'}`}>
-              <Lab isDusk={isDusk} />
+              <Lab isDusk={isDusk} slug={w.slug} />
             </div>
           </div>
 
@@ -220,6 +268,26 @@ export default function WriteupDetailPage() {
               {w.flag}
             </code>
           </div>
+
+          {/* Next write-up */}
+          {hasNext && (
+            <Link href={`/solved/${next.slug}`} className="block">
+              <motion.div
+                whileTap={{ scale: 0.99 }}
+                className={`rounded-2xl p-4 border flex items-center justify-between gap-3 ${
+                  isDusk ? 'bg-[#2A263A] border-[#3E3852]' : 'bg-[#EDE8DF] border-[#D2C9B8]'
+                }`}
+              >
+                <div className="min-w-0">
+                  <div className={`text-[10px] font-bold uppercase tracking-wider ${mutedText}`}>Next write-up</div>
+                  <div className={`text-sm font-extrabold truncate ${isDusk ? 'text-[#F0ECF8]' : 'text-[#2A2623]'}`}>
+                    {CATEGORY_ACCENT[next.category].emoji} {next.title}
+                  </div>
+                </div>
+                <ChevronRight className={`w-5 h-5 shrink-0 ${isDusk ? 'text-[#B3ACC5]' : 'text-[#6A635C]'}`} />
+              </motion.div>
+            </Link>
+          )}
         </main>
       </div>
     </div>

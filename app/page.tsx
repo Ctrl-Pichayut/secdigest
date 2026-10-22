@@ -7,6 +7,9 @@ import { NewsItem, FilterCategory } from '@/lib/types';
 import Link from 'next/link';
 import NewsCard from '@/components/NewsCard';
 import { RefreshCw, CheckCheck, ChevronDown, FlaskConical } from 'lucide-react';
+import { useTheme } from '@/lib/ctf/useTheme';
+import { useAllProgress, isDone } from '@/lib/ctf/progress';
+import { WRITEUPS } from '@/lib/ctf/writeups';
 
 const FILTER_TABS: { id: FilterCategory; label: string }[] = [
   { id: 'ALL', label: '✨ All' },
@@ -24,45 +27,16 @@ export default function HomePage() {
   const [error, setError] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<FilterCategory>('ALL');
   const [readDrawerOpen, setReadDrawerOpen] = useState<boolean>(false);
-  const [theme, setTheme] = useState<'paper' | 'dusk'>('paper');
 
-  // Load persisted theme
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem('secdigest_theme');
-      if (saved === 'dusk' || saved === 'paper') {
-        setTheme(saved);
-      }
-    } catch {
-      // ignore storage access errors
-    }
-  }, []);
+  // Shared reading-theme store — stays in sync with the Solved CTF pages.
+  const { theme, isDusk, toggle: toggleTheme } = useTheme();
 
-  const toggleTheme = () => {
-    const nextTheme = theme === 'paper' ? 'dusk' : 'paper';
-    setTheme(nextTheme);
-    try {
-      localStorage.setItem('secdigest_theme', nextTheme);
-    } catch {
-      // ignore
-    }
-  };
-
-  const isDusk = theme === 'dusk';
-
-  // Sync body background color, text color, and meta theme-color with active theme
-  useEffect(() => {
-    if (typeof document !== 'undefined') {
-      const bgColor = isDusk ? '#1E1B29' : '#E5DFD3';
-      const textColor = isDusk ? '#EAE6F2' : '#2A2623';
-      document.body.style.backgroundColor = bgColor;
-      document.body.style.color = textColor;
-      const metaTheme = document.querySelector('meta[name="theme-color"]');
-      if (metaTheme) {
-        metaTheme.setAttribute('content', bgColor);
-      }
-    }
-  }, [isDusk]);
+  // Learning progress across the three interactive labs (for the header tally).
+  const allProgress = useAllProgress();
+  const labsDone = useMemo(
+    () => WRITEUPS.filter((w) => isDone(allProgress[w.slug])).length,
+    [allProgress]
+  );
 
   // Time-aware greeting badge based on user's local hour
   const timeGreeting = useMemo(() => {
@@ -232,7 +206,7 @@ export default function HomePage() {
       }`}
     >
       <div
-        className={`max-w-md mx-auto min-h-screen flex flex-col pb-16 transition-colors duration-200 ${
+        className={`max-w-md mx-auto min-h-screen flex flex-col pb-28 transition-colors duration-200 ${
           isDusk
             ? 'bg-[#1E1B29] text-[#EAE6F2] selection:bg-purple-900'
             : 'bg-[#E5DFD3] text-[#2A2623] selection:bg-amber-200'
@@ -276,14 +250,26 @@ export default function HomePage() {
               {/* Solved CTF labs link */}
               <Link
                 href="/solved"
-                aria-label="Solved CTF labs"
-                className={`inline-flex items-center justify-center p-2.5 rounded-2xl text-xs font-bold border transition-all touch-manipulation cursor-pointer shadow-xs ${
+                aria-label={`Solved CTF labs${labsDone > 0 ? `, ${labsDone} of ${WRITEUPS.length} done` : ''}`}
+                className={`relative inline-flex items-center justify-center p-2.5 rounded-2xl text-xs font-bold border transition-all touch-manipulation cursor-pointer shadow-xs ${
                   isDusk
                     ? 'bg-[#2A263A] text-[#EAE6F2] border-[#3E3852] hover:bg-[#353048]'
                     : 'bg-[#EDE8DF] text-[#2A2623] border-[#D2C9B8] hover:bg-[#E2DBD0]'
                 }`}
               >
                 <FlaskConical className="w-4 h-4" />
+                {labsDone > 0 && (
+                  <span
+                    style={{ borderColor: isDusk ? '#1E1B29' : '#E5DFD3' }}
+                    className={`absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-black flex items-center justify-center border-2 text-white ${
+                      labsDone === WRITEUPS.length
+                        ? 'bg-emerald-500'
+                        : 'bg-gradient-to-tr from-amber-500 to-rose-500'
+                    }`}
+                  >
+                    {labsDone === WRITEUPS.length ? '✓' : labsDone}
+                  </span>
+                )}
               </Link>
               {/* Eye-Comfort Theme Toggle Button (Paper / Dusk) */}
               <motion.button

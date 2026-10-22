@@ -1,7 +1,12 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
-import { Chip, Hint, LabButton, Term, TermLine, WinBanner } from './labUi';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { motion } from 'framer-motion';
+import { Chip, FeedbackBar, Hint, LabButton, StageTracker, Term, TermLine, WinBanner } from './labUi';
+import { useProgressReporter } from '@/lib/ctf/progress';
+import { useFeedback } from '@/lib/ctf/feedback';
+
+const STAGES = ['Peel the Base64 layer', 'Decode one byte by hand', 'Recover the whole message'];
 
 /**
  * Interactive StupidEncryption lab. The cipher is implemented for real in
@@ -98,7 +103,9 @@ function NibbleBox({
   );
 }
 
-export default function CryptoNibbleLab({ isDusk }: { isDusk: boolean }) {
+export default function CryptoNibbleLab({ isDusk, slug = 'crypto-nibble' }: { isDusk: boolean; slug?: string }) {
+  const { report, clear } = useProgressReporter(slug);
+  const { cue } = useFeedback();
   const tokens = useMemo(() => Array.from(MESSAGE).map(encodeChar), []);
   const tokenStream = useMemo(() => tokens.join(' '), [tokens]);
   const base64 = useMemo(() => {
@@ -111,21 +118,79 @@ export default function CryptoNibbleLab({ isDusk }: { isDusk: boolean }) {
 
   const [decoded, setDecoded] = useState(false);
   const [selected, setSelected] = useState<number>(0);
+  const [touched, setTouched] = useState(false);
   const [revealed, setRevealed] = useState(false);
+  const [revealCount, setRevealCount] = useState(0); // progressive decode cursor
   const [play, setPlay] = useState('hello');
+  const timer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const det = decodeToken(tokens[selected] ?? 'AA');
   const plaintext = useMemo(() => tokens.map((t) => decodeToken(t).char).join(''), [tokens]);
+
+  // Current stage for the tracker (index of first not-done stage).
+  const current = !decoded ? 0 : !touched ? 1 : !revealed ? 2 : 3;
+
+  useEffect(() => {
+    if (current > 0 || revealed) {
+      report(current, STAGES.length, revealed ? 'solved' : 'in-progress');
+    }
+  }, [current, revealed, report]);
+
+  // Clean up the reveal interval on unmount.
+  useEffect(() => () => {
+    if (timer.current) clearInterval(timer.current);
+  }, []);
+
+  // Decode the full message progressively, character by character.
+  const startReveal = () => {
+    cue('step');
+    setRevealCount(0);
+    if (timer.current) clearInterval(timer.current);
+    timer.current = setInterval(() => {
+      setRevealCount((c) => {
+        const next = c + 1;
+        if (next >= tokens.length) {
+          if (timer.current) clearInterval(timer.current);
+          setRevealed(true);
+          cue('success');
+          return tokens.length;
+        }
+        return next;
+      });
+    }, 45);
+  };
+
+  const resetLab = () => {
+    cue('tap');
+    if (timer.current) clearInterval(timer.current);
+    setDecoded(false);
+    setSelected(0);
+    setTouched(false);
+    setRevealed(false);
+    setRevealCount(0);
+    clear();
+  };
+
+  const revealedPlain = useMemo(
+    () => tokens.slice(0, revealCount).map((t) => decodeToken(t).char).join(''),
+    [tokens, revealCount]
+  );
 
   const mutedText = isDusk ? 'text-[#B9B2CE]' : 'text-[#5A544E]';
   const panel = isDusk ? 'bg-[#2A263A] border-[#3E3852]' : 'bg-[#EDE8DF] border-[#D2C9B8]';
 
   return (
     <div className="space-y-4">
-      {!decoded && (
-        <Hint isDusk={isDusk}>
-          The file looks like Base64 (letters + a trailing <code>=</code>). Always peel that first — but treat the
-          result as another layer, not the answer.
+      <StageTracker stages={STAGES} current={current} isDusk={isDusk} />
+      <FeedbackBar isDusk={isDusk} />
+
+      {!revealed && (
+        <Hint isDusk={isDusk} swapKey={current}>
+          {!decoded
+            ? 'The file looks like Base64 (letters + a trailing =). Always peel that first — but treat the result as another layer, not the answer.'
+            : !touched
+            ? 'Tap any token below to watch one byte decode, nibble by nibble. Each two-letter token is one byte.'
+            : 'See the rule? Now decode the whole message at once — no key needed, which is exactly the weakness.'}
         </Hint>
       )}
 
@@ -138,7 +203,15 @@ export default function CryptoNibbleLab({ isDusk }: { isDusk: boolean }) {
           <TermLine tone="plain">{base64.slice(0, 160) + (base64.length > 160 ? ' …' : '')}</TermLine>
         </Term>
         {!decoded ? (
-          <LabButton onClick={() => setDecoded(true)} tone="primary" isDusk={isDusk} full>
+          <LabButton
+            onClick={() => {
+              cue('step');
+              setDecoded(true);
+            }}
+            tone="primary"
+            isDusk={isDusk}
+            full
+          >
             ⬇ Base64-decode
           </LabButton>
         ) : (
@@ -165,7 +238,11 @@ export default function CryptoNibbleLab({ isDusk }: { isDusk: boolean }) {
                   <button
                     key={i}
                     type="button"
-                    onClick={() => setSelected(i)}
+                    onClick={() => {
+                      cue('tap');
+                      setSelected(i);
+                      setTouched(true);
+                    }}
                     className={`font-mono text-[11px] font-bold px-1.5 py-1 rounded-md border transition-all touch-manipulation cursor-pointer active:scale-95 ${
                       isSel
                         ? 'bg-gradient-to-tr from-amber-500 via-rose-500 to-violet-600 text-white border-transparent'
@@ -183,7 +260,13 @@ export default function CryptoNibbleLab({ isDusk }: { isDusk: boolean }) {
           </div>
 
           {/* The transform, step by step */}
-          <div className={`rounded-2xl p-4 border space-y-3 ${isDusk ? 'bg-[#161320]/70 border-white/10' : 'bg-[#EFECE6]/90 border-black/5'}`}>
+          <motion.div
+            key={selected}
+            initial={{ opacity: 0.6, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.22, ease: 'easeOut' }}
+            className={`rounded-2xl p-4 border space-y-3 ${isDusk ? 'bg-[#161320]/70 border-white/10' : 'bg-[#EFECE6]/90 border-black/5'}`}
+          >
             <div className={`text-[11px] font-bold ${isDusk ? 'text-[#D4CDE4]' : 'text-[#443E38]'}`}>
               Token <span className="font-mono text-rose-400">{det.token}</span> → one character
             </div>
@@ -211,30 +294,51 @@ export default function CryptoNibbleLab({ isDusk }: { isDusk: boolean }) {
               <span className={`pb-3 ${mutedText}`}>→</span>
               <NibbleBox label="ASCII" value={det.char === ' ' ? '␠' : det.char} accent isDusk={isDusk} />
             </div>
-          </div>
+          </motion.div>
 
-          {/* Reveal all */}
-          {!revealed ? (
-            <LabButton onClick={() => setRevealed(true)} tone="primary" isDusk={isDusk} full>
+          {/* Reveal all — decodes progressively, one character at a time */}
+          {!revealed && revealCount === 0 ? (
+            <LabButton onClick={startReveal} tone="primary" isDusk={isDusk} full>
               🔓 Decode the whole message
             </LabButton>
           ) : (
             <div className={`rounded-2xl p-3.5 border space-y-2 ${panel}`}>
-              <div className={`text-[11px] font-bold uppercase tracking-wider ${mutedText}`}>Recovered plaintext</div>
+              <div className={`text-[11px] font-bold uppercase tracking-wider flex items-center justify-between ${mutedText}`}>
+                <span>Recovered plaintext</span>
+                {!revealed && (
+                  <span className="font-mono normal-case tracking-normal">
+                    {revealCount}/{tokens.length}
+                  </span>
+                )}
+              </div>
               <Term>
                 <TermLine tone="plain">
-                  {plaintext.split(FLAG).map((part, i, arr) => (
-                    <React.Fragment key={i}>
-                      {part}
-                      {i < arr.length - 1 && <span className="text-amber-300 font-bold">{FLAG}</span>}
-                    </React.Fragment>
-                  ))}
+                  {revealed ? (
+                    plaintext.split(FLAG).map((part, i, arr) => (
+                      <React.Fragment key={i}>
+                        {part}
+                        {i < arr.length - 1 && <span className="text-amber-300 font-bold">{FLAG}</span>}
+                      </React.Fragment>
+                    ))
+                  ) : (
+                    <>
+                      {revealedPlain}
+                      <span className="inline-block w-1.5 h-3 ml-0.5 bg-amber-300 animate-pulse align-middle" />
+                    </>
+                  )}
                 </TermLine>
               </Term>
             </div>
           )}
 
           {revealed && <WinBanner flag={FLAG} isDusk={isDusk} />}
+
+          {/* Reset */}
+          <div className="flex justify-end">
+            <LabButton onClick={resetLab} isDusk={isDusk}>
+              ↺ Reset lab
+            </LabButton>
+          </div>
 
           {/* Why it's broken: the encoder playground */}
           <div className={`rounded-2xl p-3.5 border space-y-2.5 ${isDusk ? 'bg-[#161320]/60 border-[#342F46]' : 'bg-[#EFECE6]/80 border-[#D2C9B8]'}`}>
