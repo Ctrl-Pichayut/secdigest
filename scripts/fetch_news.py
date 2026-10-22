@@ -416,34 +416,41 @@ def generate_content_with_fallback(
             else:
                 logger.info("[LLM] Primary '%s' succeeded.", model_name)
             return raw_text
-        except errors.APIError as e:
+        except Exception as e:
+            # Cascade through the ENTIRE fallback chain on ANY error (not just
+            # transient 429/503). A model-not-found / invalid-argument /
+            # unsupported-config error on an early model must NOT kill the run
+            # when a known-good model (e.g. gemini-2.5-flash) is still listed.
             last_error = e
             err_msg = str(e).lower()
             is_transient = any(
                 keyword in err_msg
                 for keyword in [
                     "429", "resource_exhausted", "quota", "rate limit",
-                    "503", "unavailable", "high demand", "overloaded", "server error"
+                    "503", "unavailable", "high demand", "overloaded", "server error",
                 ]
             )
-            if is_transient and idx < len(MODEL_FALLBACK_CHAIN) - 1:
-                next_model = MODEL_FALLBACK_CHAIN[idx + 1]
-                logger.warning(
-                    "[LLM] Primary %s hit %s limit -> falling back to %s",
-                    model_name,
-                    "429 RPD" if ("429" in err_msg or "resource_exhausted" in err_msg or "quota" in err_msg) else "503/transient",
-                    next_model,
-                )
-                continue
-            logger.error("[LLM] Unrecoverable error or fallback chain exhausted with '%s': %s", model_name, e)
-            raise
-        except Exception as e:
-            last_error = e
-            logger.error("[LLM] Unexpected error with model '%s': %s", model_name, e)
+            is_availability = any(
+                keyword in err_msg
+                for keyword in [
+                    "404", "not found", "not_found", "400", "invalid_argument",
+                    "invalid argument", "permission", "permission_denied", "403",
+                    "unsupported", "does not exist", "is not supported", "thinking",
+                ]
+            )
             if idx < len(MODEL_FALLBACK_CHAIN) - 1:
                 next_model = MODEL_FALLBACK_CHAIN[idx + 1]
-                logger.warning("[LLM] %s encountered error -> falling back to %s...", model_name, next_model)
+                reason = (
+                    "rate-limit/transient" if is_transient
+                    else "model-unavailable/config" if is_availability
+                    else "unexpected error"
+                )
+                logger.warning(
+                    "[LLM] Model '%s' failed (%s) -> falling back to '%s'. Detail: %s",
+                    model_name, reason, next_model, e,
+                )
                 continue
+            logger.error("[LLM] Fallback chain exhausted; last model '%s' failed: %s", model_name, e)
             raise
 
     if last_error:
