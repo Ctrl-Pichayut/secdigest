@@ -4,8 +4,9 @@ import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '@/lib/supabaseClient';
 import { NewsItem, FilterCategory } from '@/lib/types';
+import Link from 'next/link';
 import NewsCard from '@/components/NewsCard';
-import { RefreshCw, CheckCheck, ChevronDown } from 'lucide-react';
+import { RefreshCw, CheckCheck, ChevronDown, FlaskConical } from 'lucide-react';
 
 const FILTER_TABS: { id: FilterCategory; label: string }[] = [
   { id: 'ALL', label: '✨ All' },
@@ -272,6 +273,18 @@ export default function HomePage() {
             </div>
 
             <div className="flex items-center gap-2">
+              {/* Solved CTF labs link */}
+              <Link
+                href="/solved"
+                aria-label="Solved CTF labs"
+                className={`inline-flex items-center justify-center p-2.5 rounded-2xl text-xs font-bold border transition-all touch-manipulation cursor-pointer shadow-xs ${
+                  isDusk
+                    ? 'bg-[#2A263A] text-[#EAE6F2] border-[#3E3852] hover:bg-[#353048]'
+                    : 'bg-[#EDE8DF] text-[#2A2623] border-[#D2C9B8] hover:bg-[#E2DBD0]'
+                }`}
+              >
+                <FlaskConical className="w-4 h-4" />
+              </Link>
               {/* Eye-Comfort Theme Toggle Button (Paper / Dusk) */}
               <motion.button
                 type="button"
