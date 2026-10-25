@@ -654,7 +654,7 @@ def main() -> None:
         or os.getenv("SUPABASE_KEY")
         or os.getenv("NEXT_PUBLIC_SUPABASE_ANON_KEY")
     )
-    gemini_api_key = os.getenv("GEMINI_API_KEY")
+    gemini_api_key = (os.getenv("GEMINI_API_KEY") or "").strip() or None
 
     if not args.dry_run:
         missing_vars = []
