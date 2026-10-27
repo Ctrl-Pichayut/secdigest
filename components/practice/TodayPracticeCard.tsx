@@ -4,7 +4,7 @@ import React from 'react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { GraduationCap, ChevronRight } from 'lucide-react';
-import { ALL_CARDS } from '@/lib/practice/cards';
+import { usePracticeCards } from '@/lib/practice/remoteCards';
 import { computeStats } from '@/lib/practice/scheduler';
 import { usePractice } from '@/lib/practice/store';
 import { usePracticeSettings } from '@/lib/practice/settings';
@@ -19,10 +19,11 @@ export default function TodayPracticeCard({ isDusk }: { isDusk: boolean }) {
   const p = palette(isDusk);
   const { ready, reviews, sessions } = usePractice();
   const { settings } = usePracticeSettings();
+  const cards = usePracticeCards();
 
   if (!ready) return null;
 
-  const stats = computeStats(ALL_CARDS, reviews, sessions);
+  const stats = computeStats(cards, reviews, sessions);
   const unseen = LANGS.filter((l) => settings.weights[l] > 0).reduce((sum, l) => sum + stats.perLang[l].unseen, 0);
   const newReady = Math.min(unseen, settings.newPerSession);
   const headline =

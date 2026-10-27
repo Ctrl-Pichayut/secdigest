@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { GraduationCap, Cloud, CloudOff, HardDrive, Settings2, ChevronDown, Minus, Plus } from 'lucide-react';
 import { useTheme } from '@/lib/ctf/useTheme';
-import { ALL_CARDS } from '@/lib/practice/cards';
+import { usePracticeCards } from '@/lib/practice/remoteCards';
 import { buildSession, computeStats, SESSION_SIZES, type SessionItem } from '@/lib/practice/scheduler';
 import { usePractice, type SyncStatus } from '@/lib/practice/store';
 import { presetIdFor, usePracticeSettings, WEIGHT_PRESETS } from '@/lib/practice/settings';
@@ -57,13 +57,14 @@ export default function PracticePage() {
   const [showSettings, setShowSettings] = useState(false);
   const [session, setSession] = useState<{ items: SessionItem[]; minutes: number; mode: SessionMode; key: number } | null>(null);
 
-  const stats = useMemo(() => computeStats(ALL_CARDS, reviews, sessions), [reviews, sessions]);
+  const cards = usePracticeCards();
+  const stats = useMemo(() => computeStats(cards, reviews, sessions), [cards, reviews, sessions]);
 
   const start = useCallback(
     (minutes: number, sessionMode: SessionMode) => {
       const size = SESSION_SIZES.find((s) => s.minutes === minutes) ?? SESSION_SIZES[1];
       const items = buildSession({
-        cards: ALL_CARDS,
+        cards,
         reviews,
         mode: sessionMode,
         cardCount: size.cards,
@@ -72,7 +73,7 @@ export default function PracticePage() {
       });
       setSession({ items, minutes: size.minutes, mode: sessionMode, key: Date.now() });
     },
-    [reviews, settings]
+    [cards, reviews, settings]
   );
 
   // The feed's "Today's practice" card links here with ?start=<minutes>.

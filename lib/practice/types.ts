@@ -26,6 +26,8 @@ interface BaseCard {
   prompt: string;
   /** Shown after answering, right or wrong. */
   explanation: string;
+  /** Set on cards written by the refill pipeline (stored in public.practice_cards). */
+  generated?: boolean;
 }
 
 /** Predict what a snippet prints. */
@@ -48,6 +50,13 @@ export interface BugCard extends BaseCard {
   kind: 'bug';
   lines: string[];
   bugLine: number;
+  /**
+   * Verifier hints (required on generated cards): replacing `bugLine` with
+   * `fixedLine` must make the program print `expectOutput`.
+   */
+  fixedLine?: string;
+  expectOutput?: string;
+  full?: boolean;
 }
 
 /** Put shuffled lines back in a working order. */

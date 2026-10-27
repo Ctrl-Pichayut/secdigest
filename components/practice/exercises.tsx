@@ -139,6 +139,11 @@ function BugExercise({ card, isDusk, onAnswered }: ExerciseProps<BugCard>) {
   );
 }
 
+/** Indentation only matters in Python; in C, JS and Java two closing braces are interchangeable. */
+function sameLine(card: OrderCard, a: string, b: string): boolean {
+  return card.lang === 'python' ? a === b : a.trim() === b.trim();
+}
+
 function OrderExercise({ card, isDusk, onAnswered }: ExerciseProps<OrderCard>) {
   const p = palette(isDusk);
   const [pool, setPool] = useState<number[]>(() => shuffledIndexes(card.lines.length, true));
@@ -162,8 +167,8 @@ function OrderExercise({ card, isDusk, onAnswered }: ExerciseProps<OrderCard>) {
     setBuilt([]);
   };
   const check = () => {
-    // Compare text, so identical lines (like two closing braces) can swap freely.
-    const correct = built.map((i) => card.lines[i]).join('\n') === card.lines.join('\n');
+    // Compare text, not line identity, so identical lines (like two closing braces) can swap freely.
+    const correct = built.length === card.lines.length && built.every((idx, pos) => sameLine(card, card.lines[idx], card.lines[pos]));
     setResult(correct);
     onAnswered(correct);
   };
@@ -177,7 +182,7 @@ function OrderExercise({ card, isDusk, onAnswered }: ExerciseProps<OrderCard>) {
         ) : (
           <div className="min-w-max">
             {built.map((idx, pos) => {
-              const ok = card.lines[idx] === card.lines[pos];
+              const ok = sameLine(card, card.lines[idx], card.lines[pos]);
               const tone = !locked
                 ? 'hover:bg-white/5'
                 : ok

@@ -4,7 +4,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Sparkles } from 'lucide-react';
 import { Rating, type Grade } from 'ts-fsrs';
-import { ALL_CARDS } from '@/lib/practice/cards';
+import { usePracticeCards } from '@/lib/practice/remoteCards';
 import { computeStats, rateCard, type SessionItem } from '@/lib/practice/scheduler';
 import { newSessionId, recordReview, recordSession, usePractice } from '@/lib/practice/store';
 import type { SessionMode } from '@/lib/practice/types';
@@ -42,6 +42,7 @@ export default function PracticeSession({
 }) {
   const p = palette(isDusk);
   const { reviews, sessions } = usePractice();
+  const cards = usePracticeCards();
   const { cue } = useFeedback();
   const [queue, setQueue] = useState<QueueItem[]>(() => items.map((it) => ({ ...it, retry: false })));
   const [pos, setPos] = useState(0);
@@ -123,7 +124,7 @@ export default function PracticeSession({
     }
   };
 
-  const weekSessions = computeStats(ALL_CARDS, reviews, sessions).weekSessions;
+  const weekSessions = computeStats(cards, reviews, sessions).weekSessions;
   const progress = queue.length > 0 ? (pos + (answer !== null ? 1 : 0)) / queue.length : 1;
 
   return (
@@ -243,6 +244,11 @@ export default function PracticeSession({
                   )}
                   {current.retry && (
                     <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${p.chipIdle}`}>Second try</span>
+                  )}
+                  {current.card.generated && (
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${p.chipIdle}`} title="Written by AI; its answer was checked by running the code">
+                      AI · run-checked
+                    </span>
                   )}
                 </div>
 

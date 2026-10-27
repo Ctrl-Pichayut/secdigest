@@ -135,7 +135,9 @@ export function playCue(cue: Cue) {
       // ignore
     }
   }
-  if (p.haptics && typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+  // Browsers block (and log) vibrate() before the first real tap on the page.
+  const activated = typeof navigator === 'undefined' || !navigator.userActivation || navigator.userActivation.hasBeenActive;
+  if (p.haptics && activated && typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
     try {
       navigator.vibrate(VIBE_SPECS[cue]);
     } catch {

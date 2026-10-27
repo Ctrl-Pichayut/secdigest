@@ -5,6 +5,16 @@ on:
     # Runs daily at 23:30 UTC (06:30 AM Bangkok time / UTC+7)
     - cron: '30 23 * * *'
   workflow_dispatch:
+    inputs:
+      practice_refill:
+        description: 'Practice cards: "auto" refills only languages running low; pick one to force a batch now'
+        type: choice
+        options: [auto, python, c, js, java]
+        default: auto
+
+# The practice refill step runs model-generated code to verify it, so keep the token read-only.
+permissions:
+  contents: read
 
 concurrency:
   group: daily-digest-ingestion
@@ -18,6 +28,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          # Don't leave the GitHub token in .git/config where executed snippets could read it.
+          persist-credentials: false
 
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
@@ -38,3 +51,30 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           python scripts/fetch_news.py
+
+      # Toolchains used to verify generated practice cards by running them (gcc ships with the runner).
+      - name: Set up Node.js (practice card verification)
+        if: ${{ !cancelled() }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Set up Java (practice card verification)
+        if: ${{ !cancelled() }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      # Runs after the news step so the digest gets Gemini quota first. Calls Gemini only when a
+      # language is running low on unseen cards; a failure here never fails the digest.
+      - name: Refill practice cards when running low
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          PRACTICE_FORCE_LANG: ${{ inputs.practice_refill || 'auto' }}
+        run: |
+          python scripts/generate_practice_cards.py
