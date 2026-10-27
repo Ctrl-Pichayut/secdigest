@@ -37,7 +37,8 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className="min-h-screen font-sans antialiased transition-colors duration-200">
+      {/* The theme script below sets body styles before hydration; that difference is expected. */}
+      <body className="min-h-screen font-sans antialiased transition-colors duration-200" suppressHydrationWarning>
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
         <Providers>
           {children}

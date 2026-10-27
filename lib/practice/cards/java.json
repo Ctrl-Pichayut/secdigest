@@ -1,0 +1,193 @@
+[
+  {
+    "id": "java-001",
+    "lang": "java",
+    "topic": "Basics",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "System.out.println(7 / 2 + \" \" + 7 / 2.0);",
+    "choices": [
+      "3 3.5",
+      "3.5 3.5",
+      "3 3",
+      "3.5 3"
+    ],
+    "answer": 0,
+    "explanation": "int / int is integer division. If either side is a double, the result is a double."
+  },
+  {
+    "id": "java-002",
+    "lang": "java",
+    "topic": "Basics",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "System.out.println(1 + 2 + \"3\" + 4 + 5);",
+    "choices": [
+      "3345",
+      "12345",
+      "339",
+      "15"
+    ],
+    "answer": 0,
+    "explanation": "+ is evaluated left to right: 1 + 2 is 3, and once a String appears, everything after it is concatenated."
+  },
+  {
+    "id": "java-003",
+    "lang": "java",
+    "topic": "Basics",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "char c = 'A';\nSystem.out.println(c + 1);\nSystem.out.println((char) (c + 1));",
+    "choices": [
+      "66\nB",
+      "B\nB",
+      "A1\nB",
+      "66\n66"
+    ],
+    "answer": 0,
+    "explanation": "char + int is an int. Cast back to char to get a character."
+  },
+  {
+    "id": "java-004",
+    "lang": "java",
+    "topic": "Basics",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "int big = Integer.MAX_VALUE;\nSystem.out.println(big + 1);",
+    "choices": [
+      "-2147483648",
+      "2147483648",
+      "ArithmeticException",
+      "0"
+    ],
+    "answer": 0,
+    "explanation": "Java int overflow is defined: it wraps around to the minimum value. Use long, or Math.addExact to detect overflow."
+  },
+  {
+    "id": "java-005",
+    "lang": "java",
+    "topic": "Strings",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "String a = \"hi\";\nString b = new String(\"hi\");\nSystem.out.println((a == b) + \" \" + a.equals(b));",
+    "choices": [
+      "false true",
+      "true true",
+      "true false",
+      "false false"
+    ],
+    "answer": 0,
+    "explanation": "== compares object references; .equals() compares contents. Always compare Strings with .equals()."
+  },
+  {
+    "id": "java-006",
+    "lang": "java",
+    "topic": "Strings",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "String s = \"java\";\ns.toUpperCase();\nSystem.out.println(s);",
+    "choices": [
+      "java",
+      "JAVA",
+      "Java",
+      "null"
+    ],
+    "answer": 0,
+    "explanation": "Strings are immutable. toUpperCase() returns a new String, which this code throws away. Write s = s.toUpperCase()."
+  },
+  {
+    "id": "java-007",
+    "lang": "java",
+    "topic": "Strings",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "StringBuilder sb = new StringBuilder(\"ab\");\nsb.append(\"cd\").reverse();\nSystem.out.println(sb);",
+    "choices": [
+      "dcba",
+      "abcd",
+      "cdab",
+      "ba"
+    ],
+    "answer": 0,
+    "explanation": "StringBuilder is mutable and its methods return the same builder, so calls can be chained."
+  },
+  {
+    "id": "java-008",
+    "lang": "java",
+    "topic": "Strings",
+    "kind": "bug",
+    "prompt": "Typing yes never prints \"confirmed\". Which line is wrong?",
+    "lines": [
+      "String input = scanner.nextLine();",
+      "if (input == \"yes\") {",
+      "    System.out.println(\"confirmed\");",
+      "}"
+    ],
+    "bugLine": 1,
+    "explanation": "== checks whether both are the same object, and the line you read is a new String. Use \"yes\".equals(input), which is also safe when input is null."
+  },
+  {
+    "id": "java-009",
+    "lang": "java",
+    "topic": "Strings",
+    "kind": "compare",
+    "prompt": "Length of the String s, in Java?",
+    "choices": [
+      {
+        "code": "s.length()",
+        "lang": "java"
+      },
+      {
+        "code": "s.length",
+        "lang": "js"
+      },
+      {
+        "code": "len(s)",
+        "lang": "python"
+      },
+      {
+        "code": "strlen(s)",
+        "lang": "c"
+      }
+    ],
+    "answer": 0,
+    "explanation": "Java Strings have a length() method. Java arrays use the .length field with no parentheses, which makes it easy to mix them up."
+  },
+  {
+    "id": "java-010",
+    "lang": "java",
+    "topic": "Collections",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "int[] arr = {1, 2, 3};\nList<Integer> list = new ArrayList<>(List.of(1, 2));\nSystem.out.println(arr.length + \" \" + list.size());",
+    "choices": [
+      "3 2",
+      "3 3",
+      "2 2",
+      "Compile error"
+    ],
+    "answer": 0,
+    "explanation": "Arrays have a .length field; collections have a .size() method."
+  },
+  {
+    "id": "java-011",
+    "lang": "java",
+    "topic": "Collections",
+    "kind": "order",
+    "prompt": "Put the lines in order so this prints 6.",
+    "lines": [
+      "public class Main {",
+      "    public static void main(String[] args) {",
+      "        int total = 0;",
+      "        for (int i = 1; i <= 3; i++) {",
+      "            total += i;",
+      "        }",
+      "        System.out.println(total);",
+      "    }",
+      "}"
+    ],
+    "explanation": "Declare total before the loop and print after it closes. Indentation shows which } closes which block.",
+    "expectOutput": "6",
+    "full": true
+  }
+]

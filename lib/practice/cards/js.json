@@ -1,0 +1,279 @@
+[
+  {
+    "id": "js-001",
+    "lang": "js",
+    "topic": "Types & equality",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "console.log(0 == '0', 0 === '0', null == undefined);",
+    "choices": [
+      "true false true",
+      "true false false",
+      "false false true",
+      "true true true"
+    ],
+    "answer": 0,
+    "explanation": "== converts types before comparing; === compares without conversion. Default to ===."
+  },
+  {
+    "id": "js-002",
+    "lang": "js",
+    "topic": "Types & equality",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "console.log(typeof null, typeof [], typeof NaN);",
+    "choices": [
+      "object object number",
+      "null array NaN",
+      "null object number",
+      "object array number"
+    ],
+    "answer": 0,
+    "explanation": "typeof null being 'object' is a historic bug. Arrays are objects (use Array.isArray), and NaN is a number value."
+  },
+  {
+    "id": "js-003",
+    "lang": "js",
+    "topic": "Types & equality",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "console.log('5' + 1, '5' - 1);",
+    "choices": [
+      "51 4",
+      "6 4",
+      "51 51",
+      "6 6"
+    ],
+    "answer": 0,
+    "explanation": "+ with a string concatenates, but - only works on numbers, so '5' is converted. Convert input explicitly with Number()."
+  },
+  {
+    "id": "js-004",
+    "lang": "js",
+    "topic": "Types & equality",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "console.log(NaN === NaN, Number.isNaN(NaN), parseInt('42px'));",
+    "choices": [
+      "false true 42",
+      "true true 42",
+      "false true NaN",
+      "false false 42"
+    ],
+    "answer": 0,
+    "explanation": "NaN is not equal to anything, itself included, so use Number.isNaN. parseInt reads digits until the first non-digit."
+  },
+  {
+    "id": "js-005",
+    "lang": "js",
+    "topic": "Types & equality",
+    "kind": "compare",
+    "prompt": "Check that a and b are equal without type conversion, in JavaScript?",
+    "choices": [
+      {
+        "code": "a === b",
+        "lang": "js"
+      },
+      {
+        "code": "a == b",
+        "lang": "python"
+      },
+      {
+        "code": "a.equals(b)",
+        "lang": "java"
+      },
+      {
+        "code": "a is b",
+        "lang": null
+      }
+    ],
+    "answer": 0,
+    "explanation": "=== is strict equality. In JavaScript, == converts types first (0 == '0' is true). == is the normal equality operator in Python, and Java objects compare with .equals(). is checks identity, not equality."
+  },
+  {
+    "id": "js-006",
+    "lang": "js",
+    "topic": "Arrays & objects",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "console.log([10, 9, 1].sort().join(' '));",
+    "choices": [
+      "1 10 9",
+      "1 9 10",
+      "10 9 1",
+      "9 10 1"
+    ],
+    "answer": 0,
+    "explanation": "Without a comparator, sort() compares values as strings, and '10' sorts before '9'. Sort numbers with sort((a, b) => a - b)."
+  },
+  {
+    "id": "js-007",
+    "lang": "js",
+    "topic": "Arrays & objects",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "const nums = [1, 2, 3, 4];\nconst r = nums.filter(n => n % 2 === 0).map(n => n * 10).reduce((a, b) => a + b, 0);\nconsole.log(r);",
+    "choices": [
+      "60",
+      "100",
+      "40",
+      "[20, 40]"
+    ],
+    "answer": 0,
+    "explanation": "filter keeps 2 and 4, map turns them into 20 and 40, and reduce adds them up starting from 0."
+  },
+  {
+    "id": "js-008",
+    "lang": "js",
+    "topic": "Arrays & objects",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "const [first, ...rest] = [1, 2, 3];\nconst merged = { ...{ a: 1, b: 2 }, b: 3 };\nconsole.log(first, rest.length, merged.b);",
+    "choices": [
+      "1 2 3",
+      "1 3 2",
+      "1 2 2",
+      "[1] 2 3"
+    ],
+    "answer": 0,
+    "explanation": "...rest collects the remaining items. In object spread, later keys overwrite earlier ones."
+  },
+  {
+    "id": "js-009",
+    "lang": "js",
+    "topic": "Arrays & objects",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "const user = { name: 'ann' };\nuser.name = 'bob';\nconsole.log(user.name);",
+    "choices": [
+      "bob",
+      "ann",
+      "TypeError",
+      "undefined"
+    ],
+    "answer": 0,
+    "explanation": "const stops the variable from being reassigned, but the object it points to can still change. Object.freeze() makes the object itself read-only."
+  },
+  {
+    "id": "js-010",
+    "lang": "js",
+    "topic": "Arrays & objects",
+    "kind": "compare",
+    "prompt": "Add x to the end of the array arr, in JavaScript?",
+    "choices": [
+      {
+        "code": "arr.push(x)",
+        "lang": "js"
+      },
+      {
+        "code": "arr.append(x)",
+        "lang": "python"
+      },
+      {
+        "code": "arr.add(x)",
+        "lang": "java"
+      },
+      {
+        "code": "arr.insert(x)",
+        "lang": null
+      }
+    ],
+    "answer": 0,
+    "explanation": "JavaScript arrays use push(). Python lists use append(), and Java's ArrayList uses add()."
+  },
+  {
+    "id": "js-011",
+    "lang": "js",
+    "topic": "Arrays & objects",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "const cfg = { port: 0 };\nconsole.log(cfg.port || 80, cfg.port ?? 80, cfg.db?.host);",
+    "choices": [
+      "80 0 undefined",
+      "0 0 undefined",
+      "80 80 undefined",
+      "80 0 TypeError"
+    ],
+    "answer": 0,
+    "explanation": "|| falls back on any falsy value, including 0. ?? only falls back on null or undefined. ?. stops and returns undefined instead of throwing."
+  },
+  {
+    "id": "js-012",
+    "lang": "js",
+    "topic": "Arrays & objects",
+    "kind": "order",
+    "prompt": "Put the lines in order so this prints 5.",
+    "lines": [
+      "const words = ['pear', 'fig', 'apple'];",
+      "const lengths = words.map(w => w.length);",
+      "const longest = Math.max(...lengths);",
+      "console.log(longest);"
+    ],
+    "explanation": "Each line uses the result of the one before it. Spreading an array into Math.max passes its items as separate arguments.",
+    "expectOutput": "5"
+  },
+  {
+    "id": "js-013",
+    "lang": "js",
+    "topic": "Scope & closures",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "const fs = [];\nfor (var i = 0; i < 3; i++) fs.push(() => i);\nconsole.log(fs.map(f => f()).join(' '));",
+    "choices": [
+      "3 3 3",
+      "0 1 2",
+      "2 2 2",
+      "undefined"
+    ],
+    "answer": 0,
+    "explanation": "var is function-scoped, so all three closures share one i, which is 3 once the loop ends."
+  },
+  {
+    "id": "js-014",
+    "lang": "js",
+    "topic": "Scope & closures",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "const fs = [];\nfor (let i = 0; i < 3; i++) fs.push(() => i);\nconsole.log(fs.map(f => f()).join(' '));",
+    "choices": [
+      "0 1 2",
+      "3 3 3",
+      "2 2 2",
+      "1 2 3"
+    ],
+    "answer": 0,
+    "explanation": "let creates a new binding on every loop iteration, so each closure keeps its own i. Prefer let and const over var."
+  },
+  {
+    "id": "js-015",
+    "lang": "js",
+    "topic": "Async",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "console.log('a');\nsetTimeout(() => console.log('b'), 0);\nPromise.resolve().then(() => console.log('c'));\nconsole.log('d');",
+    "choices": [
+      "a\nd\nc\nb",
+      "a\nb\nc\nd",
+      "a\nd\nb\nc",
+      "a\nc\nd\nb"
+    ],
+    "answer": 0,
+    "explanation": "Synchronous code runs first. Promise callbacks (microtasks) run before timer callbacks, even with a 0 ms delay."
+  },
+  {
+    "id": "js-016",
+    "lang": "js",
+    "topic": "Async",
+    "kind": "bug",
+    "prompt": "res.json is not a function. Which line is wrong?",
+    "lines": [
+      "async function load() {",
+      "  const res = fetch('/api/data');",
+      "  const data = await res.json();",
+      "  return data;",
+      "}"
+    ],
+    "bugLine": 1,
+    "explanation": "fetch() returns a Promise. Without await, res is the Promise itself, not the Response. Write const res = await fetch(...)."
+  }
+]

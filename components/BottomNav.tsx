@@ -4,19 +4,20 @@ import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { Newspaper, FlaskConical, SunMedium, Moon } from 'lucide-react';
+import { Newspaper, GraduationCap, FlaskConical, SunMedium, Moon } from 'lucide-react';
 import { useTheme } from '@/lib/ctf/useTheme';
 
 /**
  * Thumb-height bottom navigation shown on every page. Keeps the primary
- * destinations (Feed, Solved CTF) and the reading-theme toggle reachable with
- * one hand on a phone. Fixed inside the app's max-w-md column.
+ * destinations (Feed, Practice, Solved CTF) and the reading-theme toggle
+ * reachable with one hand on a phone. Fixed inside the app's max-w-md column.
  */
 export default function BottomNav() {
   const pathname = usePathname();
   const { isDusk, toggle } = useTheme();
 
   const onFeed = pathname === '/';
+  const onPractice = pathname.startsWith('/practice');
   const onSolved = pathname.startsWith('/solved');
 
   const itemBase =
@@ -40,6 +41,12 @@ export default function BottomNav() {
           <Newspaper className="w-5 h-5" />
           Feed
           {onFeed && <motion.span layoutId="nav-dot" className="w-1 h-1 rounded-full bg-rose-500" />}
+        </Link>
+
+        <Link href="/practice" className={`${itemBase} ${onPractice ? activeColor : idleColor}`} aria-current={onPractice ? 'page' : undefined}>
+          <GraduationCap className="w-5 h-5" />
+          Practice
+          {onPractice && <motion.span layoutId="nav-dot" className="w-1 h-1 rounded-full bg-rose-500" />}
         </Link>
 
         <Link href="/solved" className={`${itemBase} ${onSolved ? activeColor : idleColor}`} aria-current={onSolved ? 'page' : undefined}>

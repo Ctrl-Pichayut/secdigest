@@ -1,0 +1,1038 @@
+[
+  {
+    "id": "py-001",
+    "lang": "python",
+    "topic": "Basics",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "print(7 / 2, 7 // 2, 7 % 2)",
+    "choices": [
+      "3.5 3 1",
+      "3 3 1",
+      "3.5 3.5 1",
+      "3 4 1"
+    ],
+    "answer": 0,
+    "explanation": "In Python 3, / always gives a float. // is floor division and % is the remainder."
+  },
+  {
+    "id": "py-002",
+    "lang": "python",
+    "topic": "Basics",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "print(-7 // 2, -7 % 2)",
+    "choices": [
+      "-4 1",
+      "-3 -1",
+      "-3 1",
+      "-4 -1"
+    ],
+    "answer": 0,
+    "explanation": "// rounds toward negative infinity, so -7 // 2 is -4, and % takes the sign of the divisor (-7 == 2 * -4 + 1). C and Java truncate toward zero instead: -7 / 2 is -3 there."
+  },
+  {
+    "id": "py-003",
+    "lang": "python",
+    "topic": "Basics",
+    "kind": "compare",
+    "prompt": "Integer division of a by b (drop the remainder) in Python?",
+    "choices": [
+      {
+        "code": "a // b",
+        "lang": "python"
+      },
+      {
+        "code": "a / b",
+        "lang": "c"
+      },
+      {
+        "code": "Math.floor(a / b)",
+        "lang": "js"
+      },
+      {
+        "code": "a div b",
+        "lang": null
+      }
+    ],
+    "answer": 0,
+    "explanation": "Python uses //. In C and Java, / on two ints already drops the remainder; in JavaScript every number is a float, so you need Math.floor (or Math.trunc). There is no div operator in these four."
+  },
+  {
+    "id": "py-004",
+    "lang": "python",
+    "topic": "Basics",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "x = 0.1 + 0.2\nprint(x == 0.3, round(x, 2) == 0.3)",
+    "choices": [
+      "False True",
+      "True True",
+      "False False",
+      "True False"
+    ],
+    "answer": 0,
+    "explanation": "0.1 + 0.2 is 0.30000000000000004 in binary floating point. Never compare floats with ==; round them or use math.isclose()."
+  },
+  {
+    "id": "py-005",
+    "lang": "python",
+    "topic": "Basics",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "print(bool(''), bool('0'), bool([]), bool([0]))",
+    "choices": [
+      "False True False True",
+      "False False False False",
+      "False False False True",
+      "True True False True"
+    ],
+    "answer": 0,
+    "explanation": "Empty strings and empty containers are falsy. '0' is a non-empty string and [0] is a non-empty list, so both are truthy."
+  },
+  {
+    "id": "py-006",
+    "lang": "python",
+    "topic": "Basics",
+    "kind": "bug",
+    "prompt": "This should print 6 but prints 3. Which line is wrong?",
+    "lines": [
+      "total = 0",
+      "for n in [1, 2, 3]:",
+      "    total =+ n",
+      "print(total)"
+    ],
+    "bugLine": 2,
+    "explanation": "=+ is not an operator: total =+ n means total = +n, so total just ends up as the last n. The intended operator is +=."
+  },
+  {
+    "id": "py-007",
+    "lang": "python",
+    "topic": "Strings & bytes",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "s = 'hello'\nprint(s[1], s[-1], len(s))",
+    "choices": [
+      "e o 5",
+      "h o 5",
+      "e l 5",
+      "e o 4"
+    ],
+    "answer": 0,
+    "explanation": "Indexing starts at 0, so s[1] is 'e'. Negative indexes count from the end: s[-1] is the last character."
+  },
+  {
+    "id": "py-008",
+    "lang": "python",
+    "topic": "Strings & bytes",
+    "kind": "output",
+    "prompt": "What happens when this runs?",
+    "code": "s = 'cat'\ns[0] = 'b'\nprint(s)",
+    "choices": [
+      "bat",
+      "cat",
+      "TypeError",
+      "IndexError"
+    ],
+    "answer": 2,
+    "explanation": "Strings are immutable, so item assignment raises TypeError. Build a new string instead: s = 'b' + s[1:].",
+    "raises": "TypeError"
+  },
+  {
+    "id": "py-009",
+    "lang": "python",
+    "topic": "Strings & bytes",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "pi = 3.14159\nprint(f'{pi:.2f}|{42:5d}|{\"ab\":>4}')",
+    "choices": [
+      "3.14|   42|  ab",
+      "3.14|42   |ab  ",
+      "3.1|   42|  ab",
+      "3.14|42|ab"
+    ],
+    "answer": 0,
+    "explanation": ".2f keeps two decimals, 5d pads a number to width 5 (right-aligned by default), and >4 right-aligns text in width 4."
+  },
+  {
+    "id": "py-010",
+    "lang": "python",
+    "topic": "Strings & bytes",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "words = 'a,b,,c'.split(',')\nprint(len(words), '-'.join(words))",
+    "choices": [
+      "4 a-b--c",
+      "3 a-b-c",
+      "4 a-b-c",
+      "3 a-b--c"
+    ],
+    "answer": 0,
+    "explanation": "split(',') keeps the empty string between the two commas, giving ['a', 'b', '', 'c']. join puts the separator between every item, empty ones included."
+  },
+  {
+    "id": "py-011",
+    "lang": "python",
+    "topic": "Strings & bytes",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "b = 'hé'.encode('utf-8')\nprint(len('hé'), len(b))",
+    "choices": [
+      "2 3",
+      "2 2",
+      "3 3",
+      "2 4"
+    ],
+    "answer": 0,
+    "explanation": "len() of a str counts characters; len() of bytes counts bytes. 'é' takes 2 bytes in UTF-8."
+  },
+  {
+    "id": "py-012",
+    "lang": "python",
+    "topic": "Strings & bytes",
+    "kind": "compare",
+    "prompt": "Number of characters in the string s, in Python?",
+    "choices": [
+      {
+        "code": "len(s)",
+        "lang": "python"
+      },
+      {
+        "code": "s.length",
+        "lang": "js"
+      },
+      {
+        "code": "strlen(s)",
+        "lang": "c"
+      },
+      {
+        "code": "s.length()",
+        "lang": "java"
+      }
+    ],
+    "answer": 0,
+    "explanation": "Python uses the built-in len(). JavaScript strings have a .length property, Java strings have a .length() method, and C uses strlen() from <string.h>."
+  },
+  {
+    "id": "py-013",
+    "lang": "python",
+    "topic": "Lists, dicts, sets",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "a = [1, 2, 3]\nb = a\nb.append(4)\nprint(a)",
+    "choices": [
+      "[1, 2, 3]",
+      "[1, 2, 3, 4]",
+      "[4, 1, 2, 3]",
+      "None"
+    ],
+    "answer": 1,
+    "explanation": "b = a doesn't copy the list. Both names point at the same list object, so appending through b changes a too."
+  },
+  {
+    "id": "py-014",
+    "lang": "python",
+    "topic": "Lists, dicts, sets",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "a = [1, 2, 3]\nb = a.copy()\nb.append(4)\nprint(len(a), len(b))",
+    "choices": [
+      "3 4",
+      "4 4",
+      "3 3",
+      "4 3"
+    ],
+    "answer": 0,
+    "explanation": ".copy() (or a[:] or list(a)) makes a new list, so changes to b no longer affect a. It's a shallow copy: lists nested inside are still shared."
+  },
+  {
+    "id": "py-015",
+    "lang": "python",
+    "topic": "Lists, dicts, sets",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "grid = [[0] * 2] * 2\ngrid[0][0] = 1\nprint(grid)",
+    "choices": [
+      "[[1, 0], [0, 0]]",
+      "[[1, 0], [1, 0]]",
+      "[[1, 1], [0, 0]]",
+      "[[1, 1], [1, 1]]"
+    ],
+    "answer": 1,
+    "explanation": "* 2 on the outer list repeats a reference to the SAME inner list. Build rows independently with [[0] * 2 for _ in range(2)]."
+  },
+  {
+    "id": "py-016",
+    "lang": "python",
+    "topic": "Lists, dicts, sets",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "nums = [3, 1, 2]\nresult = nums.sort()\nprint(result, nums)",
+    "choices": [
+      "None [1, 2, 3]",
+      "[1, 2, 3] [1, 2, 3]",
+      "[1, 2, 3] [3, 1, 2]",
+      "None [3, 1, 2]"
+    ],
+    "answer": 0,
+    "explanation": "list.sort() sorts in place and returns None. sorted(nums) returns a new sorted list and leaves nums alone."
+  },
+  {
+    "id": "py-017",
+    "lang": "python",
+    "topic": "Lists, dicts, sets",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "ages = {'ann': 31}\nprint(ages.get('bob'), ages.get('bob', 0))",
+    "choices": [
+      "None 0",
+      "KeyError",
+      "0 0",
+      "None None"
+    ],
+    "answer": 0,
+    "explanation": "dict.get() returns None (or the default you pass) for a missing key instead of raising."
+  },
+  {
+    "id": "py-018",
+    "lang": "python",
+    "topic": "Lists, dicts, sets",
+    "kind": "output",
+    "prompt": "What happens when this runs?",
+    "code": "ages = {'ann': 31}\nprint(ages['bob'])",
+    "choices": [
+      "None",
+      "0",
+      "KeyError",
+      "''"
+    ],
+    "answer": 2,
+    "explanation": "Square-bracket lookup of a missing key raises KeyError. Use ages.get('bob') or check 'bob' in ages first.",
+    "raises": "KeyError"
+  },
+  {
+    "id": "py-019",
+    "lang": "python",
+    "topic": "Lists, dicts, sets",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "a = {1, 2, 3}\nb = {2, 3, 4}\nprint(sorted(a & b), sorted(a | b))",
+    "choices": [
+      "[2, 3] [1, 2, 3, 4]",
+      "[1, 2, 3, 4] [2, 3]",
+      "[1, 4] [1, 2, 3, 4]",
+      "[2, 3] [1, 2, 2, 3, 3, 4]"
+    ],
+    "answer": 0,
+    "explanation": "& is set intersection (in both) and | is union (in either). Sets never hold duplicates."
+  },
+  {
+    "id": "py-020",
+    "lang": "python",
+    "topic": "Lists, dicts, sets",
+    "kind": "order",
+    "prompt": "Put the lines in order so this prints how many times 'a' appears.",
+    "lines": [
+      "counts = {}",
+      "for w in 'a b a c a'.split():",
+      "    counts[w] = counts.get(w, 0) + 1",
+      "print(counts['a'])"
+    ],
+    "explanation": "Start with an empty dict, then add 1 per word using get(w, 0) for words not seen yet. collections.Counter does the same thing in one line.",
+    "expectOutput": "3"
+  },
+  {
+    "id": "py-021",
+    "lang": "python",
+    "topic": "Lists, dicts, sets",
+    "kind": "bug",
+    "prompt": "This raises ValueError. Which line is wrong?",
+    "lines": [
+      "user = {'name': 'ann', 'age': 31}",
+      "for key, value in user:",
+      "    print(key, value)"
+    ],
+    "bugLine": 1,
+    "explanation": "Looping over a dict gives only its keys, so Python tries to unpack 'name' into two variables. Loop over user.items() to get (key, value) pairs."
+  },
+  {
+    "id": "py-022",
+    "lang": "python",
+    "topic": "Slicing & comprehensions",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "s = 'python'\nprint(s[1:4], s[:2], s[-3:])",
+    "choices": [
+      "yth py hon",
+      "pyth py hon",
+      "yth pyt on",
+      "ytho py hon"
+    ],
+    "answer": 0,
+    "explanation": "s[start:stop] includes start but stops BEFORE stop. Leave out start or stop to go from the beginning or to the end."
+  },
+  {
+    "id": "py-023",
+    "lang": "python",
+    "topic": "Slicing & comprehensions",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "nums = [0, 1, 2, 3, 4, 5]\nprint(nums[::2], nums[::-1][:2])",
+    "choices": [
+      "[0, 2, 4] [5, 4]",
+      "[1, 3, 5] [5, 4]",
+      "[0, 2, 4] [0, 1]",
+      "[0, 2, 4] [4, 5]"
+    ],
+    "answer": 0,
+    "explanation": "The third slice value is the step: ::2 takes every other item and ::-1 reverses."
+  },
+  {
+    "id": "py-024",
+    "lang": "python",
+    "topic": "Slicing & comprehensions",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "print([x * x for x in range(6) if x % 2 == 0])",
+    "choices": [
+      "[0, 4, 16]",
+      "[4, 16]",
+      "[0, 4, 16, 36]",
+      "[1, 9, 25]"
+    ],
+    "answer": 0,
+    "explanation": "range(6) is 0..5. The if keeps 0, 2 and 4, and the expression squares them."
+  },
+  {
+    "id": "py-025",
+    "lang": "python",
+    "topic": "Slicing & comprehensions",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "words = ['hi', 'hey', 'hello']\nprint({w: len(w) for w in words})",
+    "choices": [
+      "{'hi': 2, 'hey': 3, 'hello': 5}",
+      "[2, 3, 5]",
+      "{2: 'hi', 3: 'hey', 5: 'hello'}",
+      "{'hi', 'hey', 'hello'}"
+    ],
+    "answer": 0,
+    "explanation": "A dict comprehension uses {key: value for ...}. Dicts keep insertion order (Python 3.7+)."
+  },
+  {
+    "id": "py-026",
+    "lang": "python",
+    "topic": "Slicing & comprehensions",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "s = 'abc'\nprint(s[1:10], repr(s[5:]))",
+    "choices": [
+      "bc ''",
+      "IndexError",
+      "bc None",
+      "abc ''"
+    ],
+    "answer": 0,
+    "explanation": "Slices never raise for out-of-range bounds; they clip to the string. Only single-index access like s[5] raises IndexError."
+  },
+  {
+    "id": "py-027",
+    "lang": "python",
+    "topic": "Slicing & comprehensions",
+    "kind": "order",
+    "prompt": "Put the lines in order so this prints [4, 16].",
+    "lines": [
+      "def evens_squared(nums):",
+      "    result = []",
+      "    for n in nums:",
+      "        if n % 2 == 0:",
+      "            result.append(n * n)",
+      "    return result",
+      "print(evens_squared([1, 2, 3, 4]))"
+    ],
+    "explanation": "This loop is exactly what [n * n for n in nums if n % 2 == 0] does. Watch the indentation: return must sit after the loop, not inside it.",
+    "expectOutput": "[4, 16]"
+  },
+  {
+    "id": "py-028",
+    "lang": "python",
+    "topic": "Slicing & comprehensions",
+    "kind": "compare",
+    "prompt": "Last element of the list xs, in Python?",
+    "choices": [
+      {
+        "code": "xs[-1]",
+        "lang": "python"
+      },
+      {
+        "code": "xs.at(-1)",
+        "lang": "js"
+      },
+      {
+        "code": "xs.get(xs.size() - 1)",
+        "lang": "java"
+      },
+      {
+        "code": "xs[n - 1]",
+        "lang": "c"
+      }
+    ],
+    "answer": 0,
+    "explanation": "Only Python supports negative indexes with []. In JavaScript xs[-1] quietly gives undefined, so use xs.at(-1). A Java List needs get(size() - 1). C arrays don't know their length, so you track n yourself."
+  },
+  {
+    "id": "py-029",
+    "lang": "python",
+    "topic": "Functions",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "def add(item, bucket=[]):\n    bucket.append(item)\n    return bucket\n\nadd(1)\nprint(add(2))",
+    "choices": [
+      "[2]",
+      "[1, 2]",
+      "[1]",
+      "TypeError"
+    ],
+    "answer": 1,
+    "explanation": "Default values are created once, when the function is defined, so every call shares the same list. Use bucket=None and create the list inside the function."
+  },
+  {
+    "id": "py-030",
+    "lang": "python",
+    "topic": "Functions",
+    "kind": "bug",
+    "prompt": "Calling add_tag('a') then add_tag('b') returns ['a', 'b']. Which line causes it?",
+    "lines": [
+      "def add_tag(tag, tags=[]):",
+      "    tags.append(tag)",
+      "    return tags"
+    ],
+    "bugLine": 0,
+    "explanation": "The mutable default tags=[] is shared between calls. Write def add_tag(tag, tags=None): and then if tags is None: tags = []."
+  },
+  {
+    "id": "py-031",
+    "lang": "python",
+    "topic": "Functions",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "def f(a, *args, **kwargs):\n    print(a, args, kwargs)\n\nf(1, 2, 3, x=4)",
+    "choices": [
+      "1 (2, 3) {'x': 4}",
+      "1 [2, 3] {'x': 4}",
+      "(1, 2, 3) {'x': 4}",
+      "1 (2, 3, 4) {}"
+    ],
+    "answer": 0,
+    "explanation": "*args collects extra positional arguments into a tuple; **kwargs collects keyword arguments into a dict."
+  },
+  {
+    "id": "py-032",
+    "lang": "python",
+    "topic": "Functions",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "funcs = [lambda: i for i in range(3)]\nprint([f() for f in funcs])",
+    "choices": [
+      "[0, 1, 2]",
+      "[2, 2, 2]",
+      "[0, 0, 0]",
+      "[3, 3, 3]"
+    ],
+    "answer": 1,
+    "explanation": "Closures look variables up when they're called, not when they're created. By then the loop has finished with i = 2. Capture the value with lambda i=i: i."
+  },
+  {
+    "id": "py-033",
+    "lang": "python",
+    "topic": "Functions",
+    "kind": "output",
+    "prompt": "What happens when this runs?",
+    "code": "count = 0\ndef bump():\n    count += 1\nbump()\nprint(count)",
+    "choices": [
+      "1",
+      "0",
+      "UnboundLocalError",
+      "NameError"
+    ],
+    "answer": 2,
+    "explanation": "Assigning to count inside the function makes it a local variable for the whole function, so += reads it before it has a value. Declare global count (or better, return the new value).",
+    "raises": "UnboundLocalError"
+  },
+  {
+    "id": "py-034",
+    "lang": "python",
+    "topic": "Functions",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "def greet(name):\n    print('hi', name)\n\nresult = greet('ann')\nprint(result)",
+    "choices": [
+      "hi ann\nNone",
+      "hi ann",
+      "None",
+      "hi ann\nhi ann"
+    ],
+    "answer": 0,
+    "explanation": "A function with no return statement returns None. Printing inside a function is not the same as returning a value."
+  },
+  {
+    "id": "py-035",
+    "lang": "python",
+    "topic": "Functions",
+    "kind": "order",
+    "prompt": "Put the lines in order so this prints 120.",
+    "lines": [
+      "def fact(n):",
+      "    if n <= 1:",
+      "        return 1",
+      "    return n * fact(n - 1)",
+      "print(fact(5))"
+    ],
+    "explanation": "A recursive function needs its base case (n <= 1) checked before it calls itself, or it never stops.",
+    "expectOutput": "120"
+  },
+  {
+    "id": "py-036",
+    "lang": "python",
+    "topic": "Classes",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "class Dog:\n    tricks = []\n    def add(self, t):\n        self.tricks.append(t)\n\na, b = Dog(), Dog()\na.add('sit')\nprint(b.tricks)",
+    "choices": [
+      "['sit']",
+      "[]",
+      "AttributeError",
+      "None"
+    ],
+    "answer": 0,
+    "explanation": "tricks is a class attribute shared by every Dog. Per-object data belongs in __init__: self.tricks = []."
+  },
+  {
+    "id": "py-037",
+    "lang": "python",
+    "topic": "Classes",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "class Point:\n    def __init__(self, x, y):\n        self.x, self.y = x, y\n    def __repr__(self):\n        return f'Point({self.x}, {self.y})'\n\nprint([Point(1, 2)])",
+    "choices": [
+      "[Point(1, 2)]",
+      "[<__main__.Point object>]",
+      "Point(1, 2)",
+      "[(1, 2)]"
+    ],
+    "answer": 0,
+    "explanation": "Containers display their items with repr(), so defining __repr__ controls how objects look inside lists, in the REPL and in debuggers."
+  },
+  {
+    "id": "py-038",
+    "lang": "python",
+    "topic": "Classes",
+    "kind": "bug",
+    "prompt": "Calling c.inc() raises TypeError. Which line is wrong?",
+    "lines": [
+      "class Counter:",
+      "    def __init__(self):",
+      "        self.n = 0",
+      "    def inc():",
+      "        self.n += 1"
+    ],
+    "bugLine": 3,
+    "explanation": "Instance methods receive the object as their first parameter. def inc(): needs to be def inc(self):."
+  },
+  {
+    "id": "py-039",
+    "lang": "python",
+    "topic": "Classes",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "class A:\n    def hello(self):\n        return 'A'\nclass B(A):\n    def hello(self):\n        return 'B' + super().hello()\nprint(B().hello())",
+    "choices": [
+      "BA",
+      "B",
+      "AB",
+      "A"
+    ],
+    "answer": 0,
+    "explanation": "B overrides hello, and super().hello() calls the parent class's version."
+  },
+  {
+    "id": "py-040",
+    "lang": "python",
+    "topic": "Classes",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "a = [1, 2]\nb = [1, 2]\nprint(a == b, a is b)",
+    "choices": [
+      "True False",
+      "True True",
+      "False False",
+      "False True"
+    ],
+    "answer": 0,
+    "explanation": "== compares values; is checks whether both names refer to the same object. Use is only for None (x is None)."
+  },
+  {
+    "id": "py-041",
+    "lang": "python",
+    "topic": "Classes",
+    "kind": "compare",
+    "prompt": "Compare the contents of two strings s and t, in Python?",
+    "choices": [
+      {
+        "code": "s == t",
+        "lang": "python"
+      },
+      {
+        "code": "s.equals(t)",
+        "lang": "java"
+      },
+      {
+        "code": "strcmp(s, t) == 0",
+        "lang": "c"
+      },
+      {
+        "code": "s === t",
+        "lang": "js"
+      }
+    ],
+    "answer": 0,
+    "explanation": "Python's == compares string contents. Java's == compares references, so use .equals(). C needs strcmp(). JavaScript's === compares primitive strings by value."
+  },
+  {
+    "id": "py-042",
+    "lang": "python",
+    "topic": "Exceptions",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "try:\n    x = int('42')\nexcept ValueError:\n    print('bad')\nelse:\n    print('ok', x)\nfinally:\n    print('done')",
+    "choices": [
+      "ok 42\ndone",
+      "ok 42",
+      "bad\ndone",
+      "done\nok 42"
+    ],
+    "answer": 0,
+    "explanation": "else runs only when the try block raised nothing. finally always runs last, error or not."
+  },
+  {
+    "id": "py-043",
+    "lang": "python",
+    "topic": "Exceptions",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "try:\n    int('4.2')\nexcept ValueError as e:\n    print(type(e).__name__)",
+    "choices": [
+      "ValueError",
+      "TypeError",
+      "4",
+      "4.2"
+    ],
+    "answer": 0,
+    "explanation": "int() won't parse a decimal string; use int(float('4.2')) if you really want truncation."
+  },
+  {
+    "id": "py-044",
+    "lang": "python",
+    "topic": "Exceptions",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "try:\n    [][1]\nexcept LookupError:\n    print('lookup')\nexcept IndexError:\n    print('index')",
+    "choices": [
+      "lookup",
+      "index",
+      "lookup\nindex",
+      "Nothing, it crashes"
+    ],
+    "answer": 0,
+    "explanation": "IndexError is a subclass of LookupError, and the first matching except clause wins. Put specific exceptions before general ones."
+  },
+  {
+    "id": "py-045",
+    "lang": "python",
+    "topic": "Exceptions",
+    "kind": "bug",
+    "prompt": "Which line raises a TypeError instead of the intended error?",
+    "lines": [
+      "def check_age(age):",
+      "    if age < 0:",
+      "        raise 'age must be positive'",
+      "    return age"
+    ],
+    "bugLine": 2,
+    "explanation": "You can only raise exception objects. Write raise ValueError('age must be positive')."
+  },
+  {
+    "id": "py-046",
+    "lang": "python",
+    "topic": "Exceptions",
+    "kind": "order",
+    "prompt": "Put the lines in order so this prints 7 None.",
+    "lines": [
+      "def to_int(text):",
+      "    try:",
+      "        return int(text)",
+      "    except ValueError:",
+      "        return None",
+      "print(to_int('7'), to_int('x'))"
+    ],
+    "explanation": "Wrap only the risky call in try, and catch the specific error you expect (ValueError), not everything.",
+    "expectOutput": "7 None"
+  },
+  {
+    "id": "py-047",
+    "lang": "python",
+    "topic": "Iterators & generators",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "def gen():\n    yield 1\n    yield 2\n\ng = gen()\nprint(next(g), next(g))",
+    "choices": [
+      "1 2",
+      "1 1",
+      "[1, 2]",
+      "<generator object>"
+    ],
+    "answer": 0,
+    "explanation": "Each next() resumes the generator until it reaches the next yield."
+  },
+  {
+    "id": "py-048",
+    "lang": "python",
+    "topic": "Iterators & generators",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "squares = (x * x for x in range(3))\nprint(sum(squares), sum(squares))",
+    "choices": [
+      "5 0",
+      "5 5",
+      "14 14",
+      "5 None"
+    ],
+    "answer": 0,
+    "explanation": "A generator can only be consumed once. The second sum() finds it empty. Use a list if you need to go through the values twice."
+  },
+  {
+    "id": "py-049",
+    "lang": "python",
+    "topic": "Iterators & generators",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "names = ['ann', 'bob']\nages = [31, 25]\nfor i, (n, a) in enumerate(zip(names, ages), start=1):\n    print(i, n, a)",
+    "choices": [
+      "1 ann 31\n2 bob 25",
+      "0 ann 31\n1 bob 25",
+      "1 ann 25\n2 bob 31",
+      "ann 31\nbob 25"
+    ],
+    "answer": 0,
+    "explanation": "zip pairs items up by position; enumerate adds a counter, here starting at 1."
+  },
+  {
+    "id": "py-050",
+    "lang": "python",
+    "topic": "Iterators & generators",
+    "kind": "output",
+    "prompt": "What happens when this runs?",
+    "code": "it = iter([1])\nnext(it)\nnext(it)",
+    "choices": [
+      "1",
+      "None",
+      "StopIteration",
+      "IndexError"
+    ],
+    "answer": 2,
+    "explanation": "An exhausted iterator raises StopIteration from next(). for loops catch it for you; pass a default with next(it, None) to avoid it.",
+    "raises": "StopIteration"
+  },
+  {
+    "id": "py-051",
+    "lang": "python",
+    "topic": "Iterators & generators",
+    "kind": "order",
+    "prompt": "Put the lines in order so this prints [3, 2, 1].",
+    "lines": [
+      "def countdown(n):",
+      "    while n > 0:",
+      "        yield n",
+      "        n -= 1",
+      "print(list(countdown(3)))"
+    ],
+    "explanation": "Yield the value first, then decrement. Swap those two lines and you'd get [2, 1, 0].",
+    "expectOutput": "[3, 2, 1]"
+  },
+  {
+    "id": "py-052",
+    "lang": "python",
+    "topic": "Standard library",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "from collections import Counter\nc = Counter('banana')\nprint(c.most_common(1))",
+    "choices": [
+      "[('a', 3)]",
+      "[('b', 1)]",
+      "('a', 3)",
+      "{'a': 3}"
+    ],
+    "answer": 0,
+    "explanation": "Counter counts hashable items; most_common(k) returns the top k as (item, count) pairs."
+  },
+  {
+    "id": "py-053",
+    "lang": "python",
+    "topic": "Standard library",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "from collections import defaultdict\ngroups = defaultdict(list)\nfor word in ['apple', 'avocado', 'banana']:\n    groups[word[0]].append(word)\nprint(dict(groups))",
+    "choices": [
+      "{'a': ['apple', 'avocado'], 'b': ['banana']}",
+      "KeyError",
+      "{'a': 'avocado', 'b': 'banana'}",
+      "{'apple': 'a', 'avocado': 'a', 'banana': 'b'}"
+    ],
+    "answer": 0,
+    "explanation": "defaultdict(list) creates an empty list the first time a missing key is used, so you can append straight away."
+  },
+  {
+    "id": "py-054",
+    "lang": "python",
+    "topic": "Standard library",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "from itertools import combinations\nprint(list(combinations('abc', 2)))",
+    "choices": [
+      "[('a', 'b'), ('a', 'c'), ('b', 'c')]",
+      "[('a', 'b'), ('b', 'a'), ('a', 'c'), ('c', 'a'), ('b', 'c'), ('c', 'b')]",
+      "['ab', 'ac', 'bc']",
+      "[('a', 'b'), ('b', 'c')]"
+    ],
+    "answer": 0,
+    "explanation": "combinations ignores order (ab and ba count once). Use permutations when order matters."
+  },
+  {
+    "id": "py-055",
+    "lang": "python",
+    "topic": "Standard library",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "from pathlib import Path\np = Path('/var/log/app.log')\nprint(p.name, p.suffix, p.parent)",
+    "choices": [
+      "app.log .log /var/log",
+      "app .log /var/log",
+      "app.log log /var",
+      "app.log .log /var/log/"
+    ],
+    "answer": 0,
+    "explanation": "pathlib splits paths for you: name is the last part, suffix is the extension with its dot, and parent is the containing folder."
+  },
+  {
+    "id": "py-056",
+    "lang": "python",
+    "topic": "Standard library",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import re\nprint(re.findall(r'\\d+', 'a1b22c333'))",
+    "choices": [
+      "['1', '22', '333']",
+      "['1', '2', '2', '3', '3', '3']",
+      "[1, 22, 333]",
+      "'122333'"
+    ],
+    "answer": 0,
+    "explanation": "\\d+ matches runs of one or more digits; findall returns every match as a string. Use raw strings (r'...') for regexes."
+  },
+  {
+    "id": "py-057",
+    "lang": "python",
+    "topic": "Standard library",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import json\ndata = json.loads('{\"ok\": true, \"n\": null}')\nprint(data)",
+    "choices": [
+      "{'ok': True, 'n': None}",
+      "{'ok': true, 'n': null}",
+      "{\"ok\": true, \"n\": null}",
+      "{'ok': 'true', 'n': 'null'}"
+    ],
+    "answer": 0,
+    "explanation": "json.loads turns JSON true/false/null into Python True/False/None. json.dumps goes the other way."
+  },
+  {
+    "id": "py-058",
+    "lang": "python",
+    "topic": "CTF toolbox",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "data = b'AB'\nprint(data.hex(), bytes.fromhex('4142'))",
+    "choices": [
+      "4142 b'AB'",
+      "AB 4142",
+      "0x4142 b'AB'",
+      "6566 b'AB'"
+    ],
+    "answer": 0,
+    "explanation": "'A' is 0x41 and 'B' is 0x42. bytes.hex() and bytes.fromhex() convert between raw bytes and hex text."
+  },
+  {
+    "id": "py-059",
+    "lang": "python",
+    "topic": "CTF toolbox",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import base64\nprint(base64.b64encode(b'hi').decode())",
+    "choices": [
+      "aGk=",
+      "aGk",
+      "b'aGk='",
+      "6869"
+    ],
+    "answer": 0,
+    "explanation": "b64encode returns bytes, so .decode() turns it into text. The = is padding, because 2 input bytes don't fill a full 3-byte group."
+  },
+  {
+    "id": "py-060",
+    "lang": "python",
+    "topic": "CTF toolbox",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import hashlib\nh = hashlib.sha256(b'abc').hexdigest()\nprint(len(h), h[:8])",
+    "choices": [
+      "64 ba7816bf",
+      "32 ba7816bf",
+      "64 90015098",
+      "256 ba7816bf"
+    ],
+    "answer": 0,
+    "explanation": "SHA-256 produces 32 bytes, which is 64 hex characters. 90015098 is the start of the MD5 of 'abc'. Hashes take bytes, so encode strings first."
+  },
+  {
+    "id": "py-061",
+    "lang": "python",
+    "topic": "CTF toolbox",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import struct\nprint(struct.pack('<I', 1).hex(), struct.unpack('>H', b'\\x01\\x00')[0])",
+    "choices": [
+      "01000000 256",
+      "00000001 1",
+      "01000000 1",
+      "00000001 256"
+    ],
+    "answer": 0,
+    "explanation": "< is little-endian (least significant byte first) and > is big-endian. I is a 4-byte unsigned int and H a 2-byte one. b'\\x01\\x00' read big-endian is 0x0100 = 256."
+  },
+  {
+    "id": "py-062",
+    "lang": "python",
+    "topic": "CTF toolbox",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "print(int('ff', 16), hex(255), bin(5), chr(65), ord('a'))",
+    "choices": [
+      "255 0xff 0b101 A 97",
+      "ff 0xff 0b101 A 97",
+      "255 ff 101 A 97",
+      "255 0xff 0b101 a 65"
+    ],
+    "answer": 0,
+    "explanation": "int(text, base) parses any base; hex() and bin() go back to text with a prefix. chr and ord convert between characters and their code points."
+  }
+]

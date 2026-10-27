@@ -10,6 +10,7 @@ import { RefreshCw, CheckCheck, ChevronDown, FlaskConical } from 'lucide-react';
 import { useTheme } from '@/lib/ctf/useTheme';
 import { useAllProgress, isDone } from '@/lib/ctf/progress';
 import { WRITEUPS } from '@/lib/ctf/writeups';
+import TodayPracticeCard from '@/components/practice/TodayPracticeCard';
 
 const FILTER_TABS: { id: FilterCategory; label: string }[] = [
   { id: 'ALL', label: '✨ All' },
@@ -397,6 +398,9 @@ export default function HomePage() {
 
         {/* Feed Content Area */}
         <main className="flex-1 px-4 py-4 space-y-3.5">
+          {/* Daily coding practice, riding on the morning-feed habit */}
+          <TodayPracticeCard isDusk={isDusk} />
+
           {/* Quick Batch Action Bar when unread items exist */}
           {!loading && unreadItems.length > 0 && (
             <div
