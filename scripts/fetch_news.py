@@ -2,15 +2,16 @@
 """
 Personal CyberSec & Tech Digest Ingestion Pipeline.
 
-Fetches intelligence from 4 sources:
+Fetches intelligence from 5 sources:
 1. CISA Known Exploited Vulnerabilities (KEV) Catalog (last 7 days)
 2. OpenRouter Models API (models ending with :free)
-3. Hacker News Algolia API (>50 points, last 24h, matching security/cloud/dev keywords)
-4. CTFtime API (upcoming events; runs Mondays and Fridays, or with --force-ctf)
+3. Hacker News Algolia API (>50 points, last 36h, top 30 by points)
+4. Official Status Pages (Anthropic, OpenAI, GitHub, Cloudflare, Google Cloud; major/critical/high in last 36h)
+5. CTFtime API (upcoming events; runs Mondays and Fridays, or with --force-ctf)
 
-Deduplicates against existing items in Supabase public.news_items, curates the top <=5 items
-using Gemini (gemini-3.8-flash via google-genai SDK with Structured Outputs), and upserts them
-into Supabase.
+Deduplicates against existing items in Supabase public.news_items, curates up to 5 normal
+items plus breaking items (at most 8 total) using Gemini (via google-genai SDK with
+Structured Outputs), and upserts them into Supabase.
 """
 
 import argparse
@@ -60,10 +61,16 @@ class TechTerm(BaseModel):
 
 class CuratedNewsItem(BaseModel):
     source_id: str = Field(
-        description="Exact unique source_id from input (e.g. cisa_CVE-..., openrouter_..., hn_..., ctftime_...)."
+        description="Exact unique source_id from input (e.g. cisa_CVE-..., openrouter_..., hn_..., status_..., ctftime_...)."
     )
     category: CategoryEnum = Field(
         description="Allowed category: AI_FREE, CVE_SECURITY, CTF_COMPETITION, or DEV_CLOUD."
+    )
+    is_breaking: bool = Field(
+        description=(
+            "True only for major global outages, actively exploited mass-impact vulnerabilities, "
+            "or a flagship model/product launch from a major AI vendor."
+        )
     )
     title: str = Field(
         description="Sharp, professional technical title in English."
@@ -95,7 +102,7 @@ class CuratedNewsItem(BaseModel):
 
 class CuratedDigestResponse(BaseModel):
     curated_items: List[CuratedNewsItem] = Field(
-        description="List of at most 5 highest-impact items total for the day."
+        description="List of at most 5 normal items plus every breaking item, capped at 8 items total for the day."
     )
 
 
@@ -190,47 +197,47 @@ def fetch_openrouter_free_models() -> List[Dict[str, Any]]:
 
 def fetch_hacker_news() -> List[Dict[str, Any]]:
     """
-    Fetch Hacker News stories from the last 24 hours with >50 points
-    matching security, cloud, aws, cli, ide, or llm keywords.
+    Fetch top 30 Hacker News stories (sorted by points descending) from the
+    last 36 hours with >50 points. Relevance is decided downstream by the LLM.
     """
+    cutoff_36h = int((datetime.now(timezone.utc) - timedelta(hours=36)).timestamp())
     url = "https://hn.algolia.com/api/v1/search_by_date"
     params = {
         "tags": "story",
-        "numericFilters": "points>50",
-        "hitsPerPage": 100,
+        "numericFilters": f"points>50,created_at_i>{cutoff_36h}",
+        "hitsPerPage": 500,
     }
     items: List[Dict[str, Any]] = []
-    # Match keywords security, cloud, aws, cli, ide, llm (with optional plural 's')
-    keyword_regex = re.compile(r"\b(security|cloud|aws|cli|ide|llm)s?\b", re.IGNORECASE)
 
     try:
         resp = requests.get(url, params=params, timeout=15)
         resp.raise_for_status()
         data = resp.json()
         hits = data.get("hits", [])
+        nb_hits = data.get("nbHits")
+        if isinstance(nb_hits, int) and nb_hits > len(hits):
+            logger.warning(
+                "Hacker News: Algolia returned %d of %d matching stories (truncated by hitsPerPage).",
+                len(hits),
+                nb_hits,
+            )
 
-        now_ts = datetime.now(timezone.utc).timestamp()
-        cutoff_24h = now_ts - 86400
+        valid_hits = [h for h in hits if str(h.get("objectID", "")).strip()]
+        top_hits = sorted(
+            valid_hits,
+            key=lambda h: h.get("points") or 0,
+            reverse=True,
+        )[:30]
 
-        for h in hits:
-            created_ts = h.get("created_at_i", 0)
-            if created_ts < cutoff_24h:
-                continue
-
+        for h in top_hits:
+            obj_id = str(h.get("objectID", "")).strip()
             title = h.get("title") or ""
             story_text = h.get("story_text") or ""
             search_corpus = f"{title} {story_text}"
 
-            if not keyword_regex.search(search_corpus):
-                continue
-
-            obj_id = str(h.get("objectID", "")).strip()
-            if not obj_id:
-                continue
-
             story_url = h.get("url") or f"https://news.ycombinator.com/item?id={obj_id}"
-            points = h.get("points", 0)
-            comments = h.get("num_comments", 0)
+            points = h.get("points") or 0
+            comments = h.get("num_comments") or 0
 
             summary = (
                 f"Title: {title}\n"
@@ -239,8 +246,12 @@ def fetch_hacker_news() -> List[Dict[str, Any]]:
                 f"Excerpt: {story_text[:300]}"
             )
 
-            # Heuristic category classification for candidate prompt
-            if re.search(r"\b(security|cve|exploit|vulnerability|backdoor|malware)\b", search_corpus, re.IGNORECASE):
+            # Heuristic category classification for candidate prompt (restricted to DB CHECK enum)
+            if re.search(
+                r"\b(security|cve|cve-\d+|exploit|vulnerability|backdoor|malware|rce|zero-day|0-day|ransomware|breach|hacked|leak)\b",
+                search_corpus,
+                re.IGNORECASE,
+            ):
                 cat = "CVE_SECURITY"
             elif re.search(r"\b(llm|gpt|ai|claude|gemini)\b", search_corpus, re.IGNORECASE):
                 cat = "DEV_CLOUD"
@@ -255,9 +266,176 @@ def fetch_hacker_news() -> List[Dict[str, Any]]:
                 "raw_context": summary,
                 "event_start_date": None,
             })
-        logger.info(f"Hacker News: Fetched {len(items)} relevant stories from last 24h.")
+        logger.info(f"Hacker News: Fetched {len(items)} top stories from last 36h.")
     except Exception as e:
         logger.error(f"Failed to fetch Hacker News: {e}")
+    return items
+
+
+def _parse_iso_utc(ts: Optional[str]) -> Optional[datetime]:
+    """Parse an ISO 8601 timestamp string into a timezone-aware UTC datetime."""
+    if not ts or not isinstance(ts, str):
+        return None
+    try:
+        dt = datetime.fromisoformat(ts.strip())
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+    except ValueError:
+        return None
+
+
+def fetch_status_incidents() -> List[Dict[str, Any]]:
+    """
+    Fetch major/critical/high-severity incidents created in the last 36 hours
+    from official public status pages (Anthropic, OpenAI, GitHub, Cloudflare, Google Cloud).
+    """
+    cutoff_dt = datetime.now(timezone.utc) - timedelta(hours=36)
+    items: List[Dict[str, Any]] = []
+
+    statuspage_providers = [
+        ("anthropic", "Anthropic", "https://status.claude.com"),
+        ("openai", "OpenAI", "https://status.openai.com"),
+        ("github", "GitHub", "https://www.githubstatus.com"),
+        ("cloudflare", "Cloudflare", "https://www.cloudflarestatus.com"),
+    ]
+
+    for slug, provider_name, base_url in statuspage_providers:
+        endpoint = f"{base_url}/api/v2/incidents.json"
+        try:
+            resp = requests.get(endpoint, timeout=15)
+            resp.raise_for_status()
+            data = resp.json()
+            incidents = data.get("incidents", []) if isinstance(data, dict) else []
+
+            for inc in incidents:
+                if not isinstance(inc, dict):
+                    continue
+                inc_id = str(inc.get("id") or "").strip()
+                if not inc_id:
+                    continue
+
+                impact = (inc.get("impact") or "").strip().lower()
+                if impact not in ("major", "critical"):
+                    continue
+
+                created_at = inc.get("created_at")
+                created_dt = _parse_iso_utc(created_at)
+                if created_dt is None or created_dt < cutoff_dt:
+                    continue
+
+                name = " ".join((inc.get("name") or "Major incident").split())
+                status = (inc.get("status") or "unknown").strip()
+                resolved_at = inc.get("resolved_at") or "ongoing"
+                shortlink = (inc.get("shortlink") or "").strip() or f"{base_url}/incidents/{inc_id}"
+
+                components = inc.get("components") or []
+                component_names = ", ".join(
+                    c.get("name", "").strip()
+                    for c in components
+                    if isinstance(c, dict) and c.get("name")
+                ) or "N/A"
+
+                updates = inc.get("incident_updates") or []
+                latest_body = ""
+                if updates and isinstance(updates[0], dict):
+                    latest_body = (updates[0].get("body") or "").strip()
+
+                raw_context = (
+                    f"Provider: {provider_name} | Impact: {impact} | Status: {status}\n"
+                    f"Created: {created_at} | Resolved: {resolved_at}\n"
+                    f"Affected Components: {component_names}\n"
+                    f"Latest Update: {latest_body[:400]}"
+                )
+
+                items.append({
+                    "source_id": f"status_{slug}_{inc_id}",
+                    "category": "DEV_CLOUD",
+                    "title": f"{provider_name} status: {name}",
+                    "url": shortlink,
+                    "raw_context": raw_context,
+                    "event_start_date": None,
+                })
+        except Exception as e:
+            logger.error(f"Failed to fetch status incidents for {provider_name}: {e}")
+
+    # Google Cloud status page (JSON list format)
+    gcp_url = "https://status.cloud.google.com/incidents.json"
+    try:
+        resp = requests.get(gcp_url, timeout=15)
+        resp.raise_for_status()
+        gcp_incidents = resp.json()
+        if not isinstance(gcp_incidents, list):
+            raise ValueError(f"Expected JSON list, got {type(gcp_incidents).__name__}")
+
+        for inc in gcp_incidents:
+            if not isinstance(inc, dict):
+                continue
+            inc_id = str(inc.get("id") or "").strip()
+            if not inc_id:
+                continue
+
+            severity = (inc.get("severity") or "").strip().lower()
+            if severity != "high":
+                continue
+
+            created_str = inc.get("created") or inc.get("begin")
+            created_dt = _parse_iso_utc(created_str)
+            if created_dt is None or created_dt < cutoff_dt:
+                continue
+
+            external_desc = " ".join(
+                (inc.get("external_desc") or inc.get("service_name") or "High-severity incident").split()
+            )
+            status_impact = (inc.get("status_impact") or "unknown").strip()
+            begin_str = inc.get("begin") or created_str or "unknown"
+            end_str = inc.get("end") or "ongoing"
+
+            affected_products = inc.get("affected_products") or []
+            product_titles = [
+                p.get("title", "").strip()
+                for p in affected_products
+                if isinstance(p, dict) and p.get("title")
+            ]
+            service_name = (inc.get("service_name") or "").strip()
+            if not product_titles and service_name:
+                product_titles = [service_name]
+            affected_str = ", ".join(product_titles) or "N/A"
+
+            most_recent = inc.get("most_recent_update")
+            latest_text = (
+                (most_recent.get("text") or "").strip()
+                if isinstance(most_recent, dict)
+                else ""
+            )
+
+            uri = (inc.get("uri") or "").strip()
+            if uri.startswith(("http://", "https://")):
+                inc_url = uri
+            elif uri:
+                inc_url = f"https://status.cloud.google.com/{uri.lstrip('/')}"
+            else:
+                inc_url = f"https://status.cloud.google.com/incidents/{inc_id}"
+
+            raw_context = (
+                f"Provider: Google Cloud | Severity: {severity} | Status: {status_impact}\n"
+                f"Created: {created_str} | Begin: {begin_str} | End: {end_str}\n"
+                f"Affected Components: {affected_str}\n"
+                f"Latest Update: {latest_text[:400]}"
+            )
+
+            items.append({
+                "source_id": f"status_google_cloud_{inc_id}",
+                "category": "DEV_CLOUD",
+                "title": f"Google Cloud status: {external_desc}",
+                "url": inc_url,
+                "raw_context": raw_context,
+                "event_start_date": None,
+            })
+    except Exception as e:
+        logger.error(f"Failed to fetch status incidents for Google Cloud: {e}")
+
+    logger.info(f"Status Pages: Fetched {len(items)} major/critical/high incidents from last 36h.")
     return items
 
 
@@ -469,7 +647,7 @@ def curate_with_gemini(
 ) -> List[CuratedNewsItem]:
     """
     Send unseen candidate items to Gemini structured outputs using MODEL_FALLBACK_CHAIN
-    to select at most 5 highest-impact items.
+    to select at most 5 normal items plus every breaking item (at most 8 total).
     """
     if not unseen_items:
         return []
@@ -479,16 +657,21 @@ def curate_with_gemini(
     prompt = f"""You are the intelligence curator for a personal daily CyberSec & Tech digest web application.
 The target audience is a 2nd-year Computer Science student specializing in Cybersecurity, Cloud Security, CTFs, and AI/Developer Tools.
 
-Below is a feed of raw candidate items fetched today from CISA KEV, OpenRouter (free models), Hacker News, and CTFtime.
+Below is a feed of raw candidate items fetched today from CISA KEV, OpenRouter (free models), Hacker News front-page stories (any topic), official status pages (Anthropic, OpenAI, GitHub, Cloudflare, Google Cloud), and CTFtime.
 
 YOUR OBJECTIVES:
-1. Select at most 5 highest-impact items TOTAL for the day.
-   - Prioritize actively exploited zero-days / critical vulnerabilities, genuinely useful free AI models/APIs, high-signal cloud/developer tools news, and major upcoming CTFs.
-   - Filter out low-value items, minor library patches, marketing hype, and spam.
-   - If only 1-3 items are genuinely high quality, return only those. Return at most 5 items total.
+1. Select at most 5 normal (is_breaking=false) highest-impact items, PLUS every breaking (is_breaking=true) item, up to 8 items TOTAL for the day.
+   - BREAKING ITEMS (is_breaking=true): Set is_breaking=true ONLY for:
+     (a) major global outages affecting widely used cloud/AI/developer infrastructure,
+     (b) actively exploited mass-impact vulnerabilities, or
+     (c) a flagship model or product launch from a major AI vendor.
+     Breaking items MUST always be included and must never be dropped to fit within the 5 normal-item limit.
+   - Prioritize actively exploited zero-days / critical vulnerabilities, major service outages, flagship AI launches, genuinely useful free AI models/APIs, high-signal cloud/developer tools news, and major upcoming CTFs.
+   - Filter out low-value items, minor library patches, marketing hype, off-topic Hacker News stories irrelevant to CS/tech/security/AI, and spam.
+   - If only 1-3 items are genuinely high quality, return only those. Return at most 5 normal items plus breaking items, capped at 8 items total.
 
 2. CATEGORY DIVERSITY & BALANCE:
-   - Select AT MOST 2 'CVE_SECURITY' (CISA KEV) items per run. Do NOT allow CISA KEV catalog batch updates to crowd out other categories.
+   - Select AT MOST 2 non-breaking 'CVE_SECURITY' (CISA KEV) items per run. Do NOT allow CISA KEV catalog batch updates to crowd out other categories.
    - Ensure a balanced spread across available high-signal items in 'DEV_CLOUD', 'AI_FREE', and 'CTF_COMPETITION'.
 
 3. CONSOLIDATE RELATED RELEASES (VENDOR & PRODUCT DEDUPLICATION):
@@ -499,6 +682,7 @@ YOUR OBJECTIVES:
    - source_id: MUST PRESERVE the exact source_id from input without modification.
    - url: MUST PRESERVE the exact source url from input (never alter or fabricate links).
    - category: MUST be exactly one of: 'AI_FREE', 'CVE_SECURITY', 'CTF_COMPETITION', 'DEV_CLOUD'.
+   - is_breaking: boolean; true ONLY for major global outages, actively exploited mass-impact vulnerabilities, or a flagship model/product launch from a major AI vendor; false otherwise.
    - title: Sharp, professional title in English.
    - tldr: Exactly 2-3 lines of concise technical English summary explaining the vulnerability mechanics, tool capabilities, or infrastructure change (and citing related variants/CVEs if consolidated).
    - actionable_value: Exactly 1-2 lines in sharp, technical English providing a concrete takeaway for a 2nd-year CS student targeting Cybersecurity/Cloud Security (e.g. specific home lab to spin up, API credit to claim, CTF to join, or interview talking point).
@@ -519,8 +703,11 @@ Candidate items:
         raw_text = re.sub(r"\s*```$", "", raw_text)
 
     parsed = CuratedDigestResponse.model_validate_json(raw_text)
-    curated = parsed.curated_items[:5]
-    logger.info("Gemini selected %d high-impact items.", len(curated))
+    breaking_items = [item for item in parsed.curated_items if item.is_breaking]
+    normal_items = [item for item in parsed.curated_items if not item.is_breaking][:5]
+    curated = (breaking_items + normal_items)[:8]
+    breaking_kept = sum(1 for item in curated if item.is_breaking)
+    logger.info("Gemini selected %d high-impact items (%d breaking).", len(curated), breaking_kept)
     return curated
 
 
@@ -661,7 +848,7 @@ def main() -> None:
     )
     gemini_api_key = (os.getenv("GEMINI_API_KEY") or "").strip() or None
 
-    if not args.dry_run:
+    if not args.dry_run or args.backfill_th:
         missing_vars = []
         if not supabase_url:
             missing_vars.append("SUPABASE_URL (or NEXT_PUBLIC_SUPABASE_URL)")
@@ -678,25 +865,39 @@ def main() -> None:
             )
             sys.exit(1)
 
-    # Initialize Supabase client
-    supabase_client: Client = create_client(supabase_url, supabase_key)
-
     # Check if backfill mode requested
     if args.backfill_th:
+        supabase_client: Client = create_client(supabase_url, supabase_key)
         backfill_thai_translations(supabase_client, gemini_api_key)
         return
 
-    # 1. Fetch from all 4 sources
+    # 1. Fetch from all 5 sources
     logger.info("=== Starting Data Collection ===")
-    candidates: List[Dict[str, Any]] = []
-    candidates.extend(fetch_cisa_kev())
-    candidates.extend(fetch_openrouter_free_models())
-    candidates.extend(fetch_hacker_news())
-    candidates.extend(fetch_ctftime(force_ctf=args.force_ctf))
+    cisa_items = fetch_cisa_kev()
+    openrouter_items = fetch_openrouter_free_models()
+    hn_items = fetch_hacker_news()
+    status_items = fetch_status_incidents()
+    ctftime_skipped = not args.force_ctf and datetime.now(timezone.utc).weekday() not in (0, 4)
+    ctftime_items = fetch_ctftime(force_ctf=args.force_ctf)
+
+    candidates: List[Dict[str, Any]] = [
+        *cisa_items,
+        *openrouter_items,
+        *hn_items,
+        *status_items,
+        *ctftime_items,
+    ]
 
     logger.info("=== Total Candidate Items Collected: %d ===", len(candidates))
 
     if args.dry_run:
+        ctftime_display = "skipped" if ctftime_skipped else str(len(ctftime_items))
+        print("\n--- DRY RUN SOURCE COUNTS ---")
+        print(
+            f"cisa_kev: {len(cisa_items)} | openrouter: {len(openrouter_items)} "
+            f"| hacker_news: {len(hn_items)} | status_pages: {len(status_items)} "
+            f"| ctftime: {ctftime_display}"
+        )
         print("\n--- DRY RUN CANDIDATE SUMMARY ---")
         for i, item in enumerate(candidates, 1):
             print(f"[{i}] [{item['category']}] {item['title']}")
@@ -706,6 +907,9 @@ def main() -> None:
                 print(f"    Event Start: {item['event_start_date']}")
         print(f"\nDry run complete. Found {len(candidates)} candidate items.")
         return
+
+    # Initialize Supabase client (only needed outside --dry-run)
+    supabase_client: Client = create_client(supabase_url, supabase_key)
 
     # 2. Query deduplication state
     existing_ids = get_existing_source_ids(supabase_client)
