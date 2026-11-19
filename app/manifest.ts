@@ -21,5 +21,33 @@ export default function manifest(): MetadataRoute.Manifest {
         type: 'image/png',
       },
     ],
+    shortcuts: [
+      {
+        name: 'Feed',
+        short_name: 'Feed',
+        description: 'Open the daily security and tech digest feed.',
+        url: '/',
+        icons: [
+          {
+            src: '/icon-192x192.png',
+            sizes: '192x192',
+            type: 'image/png',
+          },
+        ],
+      },
+      {
+        name: 'Practice',
+        short_name: 'Practice',
+        description: 'Open daily coding and security practice.',
+        url: '/practice',
+        icons: [
+          {
+            src: '/icon-192x192.png',
+            sizes: '192x192',
+            type: 'image/png',
+          },
+        ],
+      },
+    ],
   };
 }

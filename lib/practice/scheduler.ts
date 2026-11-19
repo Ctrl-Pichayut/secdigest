@@ -234,3 +234,72 @@ export function computeStats(cards: PracticeCard[], reviews: Record<string, Revi
     practicedToday: finished.some((t) => t >= todayStart.getTime()),
   };
 }
+
+export interface TopicProgress {
+  topic: string;
+  total: number;
+  seen: number;
+  due: number;
+  unseen: number;
+  /** Share of seen cards with zero lapses (0-100), or null when the topic has no reviews yet. */
+  firstTryPct: number | null;
+  /** True for the topic that contains the next unseen card to be introduced for this language. */
+  isNextUp: boolean;
+}
+
+/**
+ * Per-topic progress for a single language, in learning-path order (the order
+ * topics first appear in `cards`). Pure helper derived from cards and reviews.
+ */
+export function computeTopicProgress(
+  cards: PracticeCard[],
+  reviews: Record<string, ReviewRow>,
+  lang: Lang,
+  now = new Date()
+): TopicProgress[] {
+  interface Bucket {
+    topic: string;
+    total: number;
+    seen: number;
+    due: number;
+    unseen: number;
+    zeroLapse: number;
+  }
+
+  const nowMs = now.getTime();
+  const buckets = new Map<string, Bucket>();
+  let nextUpTopic: string | null = null;
+
+  for (const card of cards) {
+    if (card.lang !== lang) continue;
+    let bucket = buckets.get(card.topic);
+    if (!bucket) {
+      bucket = { topic: card.topic, total: 0, seen: 0, due: 0, unseen: 0, zeroLapse: 0 };
+      buckets.set(card.topic, bucket);
+    }
+    bucket.total++;
+    const review = reviews[card.id];
+    if (!review) {
+      bucket.unseen++;
+      if (nextUpTopic === null) nextUpTopic = card.topic;
+    } else {
+      bucket.seen++;
+      if (new Date(review.due).getTime() <= nowMs) bucket.due++;
+      if ((review.fsrs?.lapses ?? 0) === 0) bucket.zeroLapse++;
+    }
+  }
+
+  const result: TopicProgress[] = [];
+  for (const b of buckets.values()) {
+    result.push({
+      topic: b.topic,
+      total: b.total,
+      seen: b.seen,
+      due: b.due,
+      unseen: b.unseen,
+      firstTryPct: b.seen > 0 ? Math.round((b.zeroLapse / b.seen) * 100) : null,
+      isNextUp: b.topic === nextUpTopic,
+    });
+  }
+  return result;
+}

@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import sys
+import tempfile
 import unittest
 from unittest import mock
 
@@ -1141,6 +1142,471 @@ class TestMain(unittest.TestCase):
             mock_fetch_hn.assert_not_called()
             mock_save.assert_not_called()
             mock_record.assert_not_called()
+
+
+class _FixedTuesdayDatetime(datetime):
+    """Deterministic Tuesday UTC clock so ctftime is consistently skipped."""
+
+    @classmethod
+    def now(cls, tz=None):
+        fixed = datetime(2026, 11, 17, 12, 0, tzinfo=timezone.utc)
+        if tz is None:
+            return fixed.replace(tzinfo=None)
+        return fixed.astimezone(tz)
+
+
+class TestRunReportAndExitCodes(unittest.TestCase):
+    """Tests for run report tracking, GITHUB_STEP_SUMMARY output, and exit codes."""
+
+    @staticmethod
+    def _candidate(source_id, category="DEV_CLOUD"):
+        return {
+            "source_id": source_id,
+            "category": category,
+            "title": f"Candidate {source_id}",
+            "url": f"https://example.com/{source_id}",
+            "raw_context": f"Context for {source_id}",
+            "event_start_date": None,
+        }
+
+    def test_summary_file_written_with_expected_table_rows_and_titles(self):
+        with tempfile.TemporaryDirectory() as tmp_dir, ExitStack() as stack:
+            summary_path = Path(tmp_dir) / "step_summary.md"
+            stack.enter_context(mock.patch.object(sys, "argv", ["fetch_news.py"]))
+            stack.enter_context(
+                mock.patch.dict(
+                    os.environ,
+                    {
+                        "SUPABASE_URL": "https://example.supabase.co",
+                        "SUPABASE_SERVICE_ROLE_KEY": "super-secret-supabase-key",
+                        "GEMINI_API_KEY": "super-secret-gemini-key",
+                        "GITHUB_STEP_SUMMARY": str(summary_path),
+                    },
+                    clear=True,
+                )
+            )
+            stack.enter_context(
+                mock.patch("fetch_news.datetime", _FixedTuesdayDatetime)
+            )
+            stack.enter_context(
+                mock.patch(
+                    "fetch_news.fetch_cisa_kev",
+                    return_value=[self._candidate("cisa_CVE-2026-0001", "CVE_SECURITY")],
+                )
+            )
+            stack.enter_context(
+                mock.patch(
+                    "fetch_news.fetch_openrouter_free_models",
+                    return_value=[
+                        self._candidate("openrouter_m1:free", "AI_FREE"),
+                        self._candidate("openrouter_m2:free", "AI_FREE"),
+                    ],
+                )
+            )
+            stack.enter_context(
+                mock.patch(
+                    "fetch_news.fetch_hacker_news",
+                    return_value=[self._candidate("hn_9001", "DEV_CLOUD")],
+                )
+            )
+            stack.enter_context(
+                mock.patch("fetch_news.fetch_status_incidents", return_value=[])
+            )
+            stack.enter_context(mock.patch("fetch_news.fetch_ctftime", return_value=[]))
+
+            fake_supabase = mock.MagicMock(name="supabase_client")
+            stack.enter_context(
+                mock.patch("fetch_news.create_client", return_value=fake_supabase)
+            )
+            stack.enter_context(
+                mock.patch(
+                    "fetch_news.get_existing_source_ids",
+                    return_value={"openrouter_m2:free"},
+                )
+            )
+
+            breaking_dict = _make_curated_item_dict(
+                "cisa_CVE-2026-0001", is_breaking=True, category="CVE_SECURITY"
+            )
+            breaking_dict["title"] = "Critical Zero-Day Exploited"
+            normal_dict = _make_curated_item_dict(
+                "hn_9001", is_breaking=False, category="DEV_CLOUD"
+            )
+            normal_dict["title"] = "OpenSSH Hardening Guide"
+
+            mock_genai_client = mock.MagicMock()
+            mock_genai_client.models.generate_content.side_effect = [
+                RuntimeError("429 RESOURCE_EXHAUSTED"),
+                mock.MagicMock(
+                    text=json.dumps({"curated_items": [breaking_dict, normal_dict]})
+                ),
+            ]
+            stack.enter_context(
+                mock.patch("fetch_news.genai.Client", return_value=mock_genai_client)
+            )
+            mock_save = stack.enter_context(
+                mock.patch("fetch_news.save_to_supabase", return_value=2)
+            )
+            mock_record = stack.enter_context(
+                mock.patch("fetch_news.record_seen_sources")
+            )
+
+            with self.assertLogs(fetch_news.logger, level="WARNING"):
+                fetch_news.main()
+
+            self.assertTrue(summary_path.exists())
+            content = summary_path.read_text(encoding="utf-8")
+            self.assertIn("| cisa_kev | 1 | ok |", content)
+            self.assertIn("| openrouter | 2 | ok |", content)
+            self.assertIn("| hacker_news | 1 | ok |", content)
+            self.assertIn("| status_pages | 0 | ok |", content)
+            self.assertIn("| ctftime | skipped | skipped |", content)
+            self.assertIn("- Status: ok", content)
+            self.assertIn("- Failed sources: none", content)
+            self.assertIn("- Unseen candidates: 3", content)
+            self.assertIn(
+                f"- Gemini model: {fetch_news.MODEL_FALLBACK_CHAIN[1]}", content
+            )
+            self.assertIn("- Curated items: 2 (1 breaking)", content)
+            self.assertIn("- [BREAKING] Critical Zero-Day Exploited", content)
+            self.assertIn("- OpenSSH Hardening Guide", content)
+            self.assertNotIn("super-secret-supabase-key", content)
+            self.assertNotIn("super-secret-gemini-key", content)
+            self.assertNotIn("example.supabase.co", content)
+            mock_save.assert_called_once()
+            mock_record.assert_called_once()
+
+    def test_summary_lists_failing_source_when_fetcher_errors(self):
+        with tempfile.TemporaryDirectory() as tmp_dir, ExitStack() as stack:
+            summary_path = Path(tmp_dir) / "step_summary.md"
+            stack.enter_context(mock.patch.object(sys, "argv", ["fetch_news.py"]))
+            stack.enter_context(
+                mock.patch.dict(
+                    os.environ,
+                    {
+                        "SUPABASE_URL": "https://example.supabase.co",
+                        "SUPABASE_SERVICE_ROLE_KEY": "test-service-role-key",
+                        "GEMINI_API_KEY": "test-gemini-key",
+                        "GITHUB_STEP_SUMMARY": str(summary_path),
+                    },
+                    clear=True,
+                )
+            )
+            stack.enter_context(
+                mock.patch("fetch_news.datetime", _FixedTuesdayDatetime)
+            )
+            # Let real fetch_cisa_kev execute and fail on requests.get
+            stack.enter_context(
+                mock.patch(
+                    "fetch_news.requests.get",
+                    side_effect=RuntimeError("CISA connection reset"),
+                )
+            )
+            stack.enter_context(
+                mock.patch("fetch_news.fetch_openrouter_free_models", return_value=[])
+            )
+            stack.enter_context(
+                mock.patch(
+                    "fetch_news.fetch_hacker_news",
+                    return_value=[self._candidate("hn_123")],
+                )
+            )
+            stack.enter_context(
+                mock.patch("fetch_news.fetch_status_incidents", return_value=[])
+            )
+            stack.enter_context(mock.patch("fetch_news.fetch_ctftime", return_value=[]))
+            stack.enter_context(mock.patch("fetch_news.create_client"))
+            stack.enter_context(
+                mock.patch("fetch_news.get_existing_source_ids", return_value=set())
+            )
+            stack.enter_context(
+                mock.patch(
+                    "fetch_news.curate_with_gemini",
+                    return_value=[_make_curated_item("hn_123")],
+                )
+            )
+            stack.enter_context(
+                mock.patch("fetch_news.save_to_supabase", return_value=1)
+            )
+            stack.enter_context(mock.patch("fetch_news.record_seen_sources"))
+
+            with self.assertLogs(fetch_news.logger, level="ERROR"):
+                fetch_news.main()
+
+            content = summary_path.read_text(encoding="utf-8")
+            self.assertIn("| cisa_kev | 0 | error |", content)
+            self.assertIn("| hacker_news | 1 | ok |", content)
+            self.assertIn("- Failed sources: cisa_kev", content)
+            self.assertIn("- Status: ok", content)
+
+    def test_one_failing_source_still_exits_zero(self):
+        with tempfile.TemporaryDirectory() as tmp_dir, ExitStack() as stack:
+            summary_path = Path(tmp_dir) / "step_summary.md"
+            stack.enter_context(mock.patch.object(sys, "argv", ["fetch_news.py"]))
+            stack.enter_context(
+                mock.patch.dict(
+                    os.environ,
+                    {
+                        "SUPABASE_URL": "https://example.supabase.co",
+                        "SUPABASE_SERVICE_ROLE_KEY": "test-service-role-key",
+                        "GEMINI_API_KEY": "test-gemini-key",
+                        "GITHUB_STEP_SUMMARY": str(summary_path),
+                    },
+                    clear=True,
+                )
+            )
+            stack.enter_context(
+                mock.patch("fetch_news.datetime", _FixedTuesdayDatetime)
+            )
+            stack.enter_context(mock.patch("fetch_news.fetch_cisa_kev", return_value=[]))
+            # Let real fetch_openrouter_free_models execute and fail
+            stack.enter_context(
+                mock.patch(
+                    "fetch_news.requests.get",
+                    side_effect=RuntimeError("OpenRouter 503"),
+                )
+            )
+            stack.enter_context(
+                mock.patch(
+                    "fetch_news.fetch_hacker_news",
+                    return_value=[self._candidate("hn_456")],
+                )
+            )
+            stack.enter_context(
+                mock.patch("fetch_news.fetch_status_incidents", return_value=[])
+            )
+            stack.enter_context(mock.patch("fetch_news.fetch_ctftime", return_value=[]))
+            stack.enter_context(mock.patch("fetch_news.create_client"))
+            stack.enter_context(
+                mock.patch("fetch_news.get_existing_source_ids", return_value=set())
+            )
+            stack.enter_context(
+                mock.patch(
+                    "fetch_news.curate_with_gemini",
+                    return_value=[_make_curated_item("hn_456")],
+                )
+            )
+            mock_save = stack.enter_context(
+                mock.patch("fetch_news.save_to_supabase", return_value=1)
+            )
+            mock_record = stack.enter_context(
+                mock.patch("fetch_news.record_seen_sources")
+            )
+
+            with self.assertLogs(fetch_news.logger, level="ERROR"):
+                # Must return normally without raising SystemExit
+                fetch_news.main()
+
+            mock_save.assert_called_once()
+            mock_record.assert_called_once()
+            content = summary_path.read_text(encoding="utf-8")
+            self.assertIn("| openrouter | 0 | error |", content)
+            self.assertIn("- Failed sources: openrouter", content)
+            self.assertIn("- Status: ok", content)
+
+    def test_all_sources_zero_exits_nonzero_after_writing_summary(self):
+        with tempfile.TemporaryDirectory() as tmp_dir, ExitStack() as stack:
+            summary_path = Path(tmp_dir) / "step_summary.md"
+            stack.enter_context(mock.patch.object(sys, "argv", ["fetch_news.py"]))
+            stack.enter_context(
+                mock.patch.dict(
+                    os.environ,
+                    {
+                        "SUPABASE_URL": "https://example.supabase.co",
+                        "SUPABASE_SERVICE_ROLE_KEY": "test-service-role-key",
+                        "GEMINI_API_KEY": "test-gemini-key",
+                        "GITHUB_STEP_SUMMARY": str(summary_path),
+                    },
+                    clear=True,
+                )
+            )
+            stack.enter_context(
+                mock.patch("fetch_news.datetime", _FixedTuesdayDatetime)
+            )
+            stack.enter_context(
+                mock.patch(
+                    "fetch_news.requests.get",
+                    side_effect=RuntimeError("CISA unavailable"),
+                )
+            )
+            stack.enter_context(
+                mock.patch("fetch_news.fetch_openrouter_free_models", return_value=[])
+            )
+            stack.enter_context(
+                mock.patch("fetch_news.fetch_hacker_news", return_value=[])
+            )
+            stack.enter_context(
+                mock.patch("fetch_news.fetch_status_incidents", return_value=[])
+            )
+            stack.enter_context(mock.patch("fetch_news.fetch_ctftime", return_value=[]))
+            mock_create_client = stack.enter_context(
+                mock.patch("fetch_news.create_client")
+            )
+            mock_curate = stack.enter_context(
+                mock.patch("fetch_news.curate_with_gemini")
+            )
+            mock_save = stack.enter_context(mock.patch("fetch_news.save_to_supabase"))
+            mock_record = stack.enter_context(
+                mock.patch("fetch_news.record_seen_sources")
+            )
+
+            with self.assertLogs(fetch_news.logger, level="ERROR"):
+                with self.assertRaises(SystemExit) as exit_ctx:
+                    fetch_news.main()
+
+            self.assertEqual(exit_ctx.exception.code, 1)
+            self.assertTrue(summary_path.exists())
+            content = summary_path.read_text(encoding="utf-8")
+            self.assertIn("| cisa_kev | 0 | error |", content)
+            self.assertIn("| openrouter | 0 | ok |", content)
+            self.assertIn("| hacker_news | 0 | ok |", content)
+            self.assertIn("| status_pages | 0 | ok |", content)
+            self.assertIn("| ctftime | skipped | skipped |", content)
+            self.assertIn("- Failed sources: cisa_kev", content)
+            self.assertIn(
+                "- Status: failed (all sources returned zero candidates)", content
+            )
+            mock_create_client.assert_not_called()
+            mock_curate.assert_not_called()
+            mock_save.assert_not_called()
+            mock_record.assert_not_called()
+
+    def test_summary_still_written_on_curation_failure(self):
+        with tempfile.TemporaryDirectory() as tmp_dir, ExitStack() as stack:
+            summary_path = Path(tmp_dir) / "step_summary.md"
+            stack.enter_context(mock.patch.object(sys, "argv", ["fetch_news.py"]))
+            stack.enter_context(
+                mock.patch.dict(
+                    os.environ,
+                    {
+                        "SUPABASE_URL": "https://example.supabase.co",
+                        "SUPABASE_SERVICE_ROLE_KEY": "test-service-role-key",
+                        "GEMINI_API_KEY": "test-gemini-key",
+                        "GITHUB_STEP_SUMMARY": str(summary_path),
+                    },
+                    clear=True,
+                )
+            )
+            stack.enter_context(
+                mock.patch("fetch_news.datetime", _FixedTuesdayDatetime)
+            )
+            stack.enter_context(mock.patch("fetch_news.fetch_cisa_kev", return_value=[]))
+            stack.enter_context(
+                mock.patch("fetch_news.fetch_openrouter_free_models", return_value=[])
+            )
+            stack.enter_context(
+                mock.patch(
+                    "fetch_news.fetch_hacker_news",
+                    return_value=[self._candidate("hn_789")],
+                )
+            )
+            stack.enter_context(
+                mock.patch("fetch_news.fetch_status_incidents", return_value=[])
+            )
+            stack.enter_context(mock.patch("fetch_news.fetch_ctftime", return_value=[]))
+            stack.enter_context(mock.patch("fetch_news.create_client"))
+            stack.enter_context(
+                mock.patch("fetch_news.get_existing_source_ids", return_value=set())
+            )
+            stack.enter_context(
+                mock.patch(
+                    "fetch_news.curate_with_gemini",
+                    side_effect=RuntimeError("API error with secret-token-xyz"),
+                )
+            )
+            mock_record = stack.enter_context(
+                mock.patch("fetch_news.record_seen_sources")
+            )
+
+            with self.assertRaisesRegex(RuntimeError, "API error"):
+                fetch_news.main()
+
+            self.assertTrue(summary_path.exists())
+            content = summary_path.read_text(encoding="utf-8")
+            self.assertIn("| hacker_news | 1 | ok |", content)
+            self.assertIn("- Unseen candidates: 1", content)
+            self.assertIn("- Status: failed (RuntimeError)", content)
+            self.assertNotIn("secret-token-xyz", content)
+            self.assertNotIn("test-service-role-key", content)
+            self.assertNotIn("test-gemini-key", content)
+            mock_record.assert_not_called()
+
+    def test_summary_appends_to_existing_file(self):
+        with tempfile.TemporaryDirectory() as tmp_dir, ExitStack() as stack:
+            summary_path = Path(tmp_dir) / "step_summary.md"
+            summary_path.write_text("# Existing Step Output\n", encoding="utf-8")
+
+            stack.enter_context(mock.patch.object(sys, "argv", ["fetch_news.py"]))
+            stack.enter_context(
+                mock.patch.dict(
+                    os.environ,
+                    {
+                        "SUPABASE_URL": "https://example.supabase.co",
+                        "SUPABASE_SERVICE_ROLE_KEY": "test-service-role-key",
+                        "GEMINI_API_KEY": "test-gemini-key",
+                        "GITHUB_STEP_SUMMARY": str(summary_path),
+                    },
+                    clear=True,
+                )
+            )
+            stack.enter_context(
+                mock.patch("fetch_news.datetime", _FixedTuesdayDatetime)
+            )
+            stack.enter_context(mock.patch("fetch_news.fetch_cisa_kev", return_value=[]))
+            stack.enter_context(
+                mock.patch("fetch_news.fetch_openrouter_free_models", return_value=[])
+            )
+            stack.enter_context(
+                mock.patch(
+                    "fetch_news.fetch_hacker_news",
+                    return_value=[self._candidate("hn_321")],
+                )
+            )
+            stack.enter_context(
+                mock.patch("fetch_news.fetch_status_incidents", return_value=[])
+            )
+            stack.enter_context(mock.patch("fetch_news.fetch_ctftime", return_value=[]))
+            stack.enter_context(mock.patch("fetch_news.create_client"))
+            stack.enter_context(
+                mock.patch("fetch_news.get_existing_source_ids", return_value=set())
+            )
+            stack.enter_context(
+                mock.patch(
+                    "fetch_news.curate_with_gemini",
+                    return_value=[_make_curated_item("hn_321")],
+                )
+            )
+            stack.enter_context(
+                mock.patch("fetch_news.save_to_supabase", return_value=1)
+            )
+            stack.enter_context(mock.patch("fetch_news.record_seen_sources"))
+
+            fetch_news.main()
+
+            content = summary_path.read_text(encoding="utf-8")
+            self.assertTrue(
+                content.startswith("# Existing Step Output\n\n## Daily Digest Run Report\n")
+            )
+
+    def test_generate_content_with_fallback_exposes_last_gemini_model(self):
+        client = mock.MagicMock()
+        client.models.generate_content.return_value = mock.MagicMock(
+            text='{"curated_items": []}'
+        )
+        fetch_news.generate_content_with_fallback(
+            client, "prompt", fetch_news.CuratedDigestResponse
+        )
+        self.assertEqual(
+            fetch_news.LAST_GEMINI_MODEL, fetch_news.MODEL_FALLBACK_CHAIN[0]
+        )
+
+        client.models.generate_content.side_effect = RuntimeError("503 unavailable")
+        with self.assertLogs(fetch_news.logger, level="WARNING"):
+            with self.assertRaises(RuntimeError):
+                fetch_news.generate_content_with_fallback(
+                    client, "prompt", fetch_news.CuratedDigestResponse
+                )
+        self.assertIsNone(fetch_news.LAST_GEMINI_MODEL)
 
 
 if __name__ == "__main__":

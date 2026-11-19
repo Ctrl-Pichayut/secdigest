@@ -11,7 +11,8 @@ import { presetIdFor, usePracticeSettings, WEIGHT_PRESETS } from '@/lib/practice
 import { ACTIVE_LANGS, LANG_META, type SessionMode } from '@/lib/practice/types';
 import PracticeSession from '@/components/practice/PracticeSession';
 import MissedCardsPanel from '@/components/practice/MissedCardsPanel';
-import { GoalBar, LangChip, palette } from '@/components/practice/ui';
+import TopicProgressPanel from '@/components/practice/TopicProgressPanel';
+import { GoalBar, palette } from '@/components/practice/ui';
 import { CheckIcon, TargetIcon } from '@/components/icons';
 
 function SyncPill({ status, pending, isDusk }: { status: SyncStatus; pending: number; isDusk: boolean }) {
@@ -105,6 +106,7 @@ export default function PracticePage() {
   }, [mode, multiLang, stats, settings, size]);
 
   const presetId = presetIdFor(settings.weights);
+  const activeLang = mode === 'mixed' ? ACTIVE_LANGS[0] : mode;
   const modes: { id: SessionMode; label: string }[] = [
     { id: 'mixed', label: 'Mixed' },
     ...ACTIVE_LANGS.map((l) => ({ id: l as SessionMode, label: LANG_META[l].label === 'JavaScript' ? 'JS' : LANG_META[l].label })),
@@ -221,33 +223,14 @@ export default function PracticePage() {
             </motion.button>
           </section>
 
-          {/* Per-language progress */}
-          <section className={`rounded-2xl p-4 border space-y-3 ${p.panel}`}>
-            <div className={`text-[11px] font-bold uppercase tracking-wider ${p.muted}`}>Your progress</div>
-            {ACTIVE_LANGS.map((lang) => {
-              const s = stats.perLang[lang];
-              const pct = s.total > 0 ? Math.round((s.seen / s.total) * 100) : 0;
-              return (
-                <div key={lang} className="space-y-1.5">
-                  <div className="flex items-center justify-between gap-2">
-                    <LangChip lang={lang} isDusk={isDusk} small />
-                    <span className={`text-[11px] font-semibold tabular-nums ${p.muted}`}>
-                      {s.seen}/{s.total} learned{s.due > 0 && ` · ${s.due} due`}
-                      {multiLang && mode === 'mixed' && ` · ${settings.weights[lang]}% of new`}
-                    </span>
-                  </div>
-                  <div className={`h-1.5 rounded-full overflow-hidden border ${p.track}`}>
-                    <motion.div
-                      className="h-full bg-gradient-to-r from-amber-400 via-rose-400 to-violet-500"
-                      initial={false}
-                      animate={{ width: `${pct}%` }}
-                      transition={{ duration: 0.4, ease: 'easeOut' }}
-                    />
-                  </div>
-                </div>
-              );
-            })}
-          </section>
+          {/* Per-topic progress */}
+          <TopicProgressPanel
+            cards={cards}
+            reviews={reviews}
+            lang={activeLang}
+            isDusk={isDusk}
+            ready={ready}
+          />
 
           {/* Cards to revisit */}
           <MissedCardsPanel

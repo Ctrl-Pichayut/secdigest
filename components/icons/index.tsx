@@ -278,3 +278,13 @@ export function JavaIcon({ className, title }: IconProps) {
     </IconBase>
   );
 }
+
+/** Magnifying glass for searching the feed. */
+export function SearchIcon({ className, title }: IconProps) {
+  return (
+    <IconBase className={className} title={title}>
+      <circle cx="11" cy="11" r="7" />
+      <path d="M20 20l-4-4" />
+    </IconBase>
+  );
+}

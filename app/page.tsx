@@ -1,12 +1,12 @@
 'use client';
 
-import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '@/lib/supabaseClient';
 import { NewsItem, FilterCategory } from '@/lib/types';
 import Link from 'next/link';
 import NewsCard from '@/components/NewsCard';
-import { RefreshCw, CheckCheck, ChevronDown, FlaskConical } from 'lucide-react';
+import { RefreshCw, CheckCheck, ChevronDown, FlaskConical, X } from 'lucide-react';
 import { useTheme } from '@/lib/ctf/useTheme';
 import { useAllProgress, isDone } from '@/lib/ctf/progress';
 import { WRITEUPS } from '@/lib/ctf/writeups';
@@ -21,6 +21,7 @@ import {
   GiftIcon,
   MoonIcon,
   PartyIcon,
+  SearchIcon,
   SparkleIcon,
   SunIcon,
   SunsetIcon,
@@ -132,6 +133,11 @@ export default function HomePage() {
   const [error, setError] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<FilterCategory>('ALL');
   const [readDrawerOpen, setReadDrawerOpen] = useState<boolean>(false);
+  const [isSearchOpen, setIsSearchOpen] = useState<boolean>(false);
+  const [searchInput, setSearchInput] = useState<string>('');
+  const [debouncedQuery, setDebouncedQuery] = useState<string>('');
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const searchToggleRef = useRef<HTMLButtonElement>(null);
 
   // Shared reading-theme store — stays in sync with the Solved CTF pages.
   const { theme, isDusk, toggle: toggleTheme } = useTheme();
@@ -200,6 +206,51 @@ export default function HomePage() {
   useEffect(() => {
     loadNews();
   }, [loadNews]);
+
+  // Debounce search input by 150ms
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedQuery(searchInput);
+    }, 150);
+    return () => window.clearTimeout(timer);
+  }, [searchInput]);
+
+  // Focus the search input as soon as the search bar expands
+  useEffect(() => {
+    if (isSearchOpen) {
+      searchInputRef.current?.focus();
+    }
+  }, [isSearchOpen]);
+
+  const handleToggleSearch = () => {
+    if (isSearchOpen) {
+      setSearchInput('');
+      setDebouncedQuery('');
+      setIsSearchOpen(false);
+    } else {
+      setIsSearchOpen(true);
+    }
+  };
+
+  const handleClearAndCollapseSearch = () => {
+    setSearchInput('');
+    setDebouncedQuery('');
+    setIsSearchOpen(false);
+    searchToggleRef.current?.focus();
+  };
+
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      if (searchInput.length > 0 || debouncedQuery.length > 0) {
+        setSearchInput('');
+        setDebouncedQuery('');
+      } else {
+        setIsSearchOpen(false);
+        searchToggleRef.current?.focus();
+      }
+    }
+  };
 
   // Optimistic Bookmark Toggle
   const handleToggleBookmark = async (id: string, currentState: boolean) => {
@@ -271,7 +322,11 @@ export default function HomePage() {
     }
   };
 
-  // Filter items based on active tab
+  const trimmedQuery = debouncedQuery.trim();
+  const normalizedQuery = trimmedQuery.toLowerCase();
+  const isSearchActive = normalizedQuery.length > 0;
+
+  // Filter items based on active tab and search query
   const filteredItems = useMemo(() => {
     let list: NewsItem[] = [];
     if (activeFilter === 'SAVED') {
@@ -280,6 +335,22 @@ export default function HomePage() {
       list = items;
     } else {
       list = items.filter((item) => item.category === activeFilter);
+    }
+
+    if (normalizedQuery) {
+      list = list.filter((item) => {
+        const searchableFields = [
+          item.title,
+          item.tldr,
+          item.actionable_value,
+          item.tldr_th,
+        ];
+        return searchableFields.some(
+          (field) =>
+            typeof field === 'string' &&
+            field.toLowerCase().includes(normalizedQuery)
+        );
+      });
     }
 
     return [...list].sort((a, b) => {
@@ -291,7 +362,7 @@ export default function HomePage() {
       }
       return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
     });
-  }, [items, activeFilter]);
+  }, [items, activeFilter, normalizedQuery]);
 
   const unreadItems = useMemo(() => filteredItems.filter((i) => !i.is_read), [filteredItems]);
   const readItems = useMemo(() => filteredItems.filter((i) => i.is_read), [filteredItems]);
@@ -616,33 +687,113 @@ export default function HomePage() {
         </nav>
 
         {/* Feed Content Area */}
-        <main className="flex-1 px-4 py-4 space-y-3.5">
+        <main className="flex-1 px-4 pt-3 pb-4 space-y-3.5">
+          {/* Compact Feed Search (collapsed into an icon button by default) */}
+          <div role="search" className="flex items-center">
+            <div
+              className={`flex items-center rounded-2xl border shadow-xs transition-colors duration-200 ${
+                isSearchOpen ? 'w-full' : ''
+              } ${
+                isDusk
+                  ? 'bg-[#2A263A] border-[#3E3852] text-[#EAE6F2]'
+                  : 'bg-[#EDE8DF] border-[#D2C9B8] text-[#2A2623]'
+              }`}
+            >
+              <button
+                ref={searchToggleRef}
+                type="button"
+                data-testid="btn-search-toggle"
+                aria-label={isSearchOpen ? 'Close search' : 'Search feed'}
+                aria-expanded={isSearchOpen}
+                aria-controls={isSearchOpen ? 'feed-search-input' : undefined}
+                onClick={handleToggleSearch}
+                className={`inline-flex items-center justify-center min-w-[40px] min-h-[40px] rounded-2xl transition-colors touch-manipulation cursor-pointer ${focusRingClass} ${
+                  isDusk
+                    ? 'text-[#D8D2E7] hover:text-[#FAF7F2] hover:bg-[#353048]'
+                    : 'text-[#4A443E] hover:text-[#2A2623] hover:bg-[#E2DBD0]'
+                }`}
+              >
+                <SearchIcon className="w-4 h-4" />
+              </button>
+              {isSearchOpen && (
+                <>
+                  <label htmlFor="feed-search-input" className="sr-only">
+                    Search feed
+                  </label>
+                  <input
+                    ref={searchInputRef}
+                    id="feed-search-input"
+                    data-testid="feed-search-input"
+                    type="search"
+                    value={searchInput}
+                    onChange={(e) => setSearchInput(e.target.value)}
+                    onKeyDown={handleSearchKeyDown}
+                    placeholder="Search titles, summaries..."
+                    autoFocus
+                    autoComplete="off"
+                    spellCheck={false}
+                    className={`flex-1 min-w-0 min-h-[40px] bg-transparent px-1.5 text-sm font-medium rounded-xl [&::-webkit-search-cancel-button]:appearance-none ${focusRingClass} ${
+                      isDusk
+                        ? 'text-[#F0ECF8] placeholder:text-[#B3ACC5]'
+                        : 'text-[#2A2623] placeholder:text-[#6A635C]'
+                    }`}
+                  />
+                  <button
+                    type="button"
+                    data-testid="btn-search-clear"
+                    aria-label="Clear and close search"
+                    onClick={handleClearAndCollapseSearch}
+                    className={`inline-flex items-center justify-center min-w-[40px] min-h-[40px] rounded-2xl transition-colors touch-manipulation cursor-pointer ${focusRingClass} ${
+                      isDusk
+                        ? 'text-[#B3ACC5] hover:text-[#FAF7F2] hover:bg-[#353048]'
+                        : 'text-[#5A544E] hover:text-[#2A2623] hover:bg-[#E2DBD0]'
+                    }`}
+                  >
+                    <X aria-hidden="true" className="w-4 h-4" />
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+
           {/* Daily coding practice, riding on the morning-feed habit */}
           <TodayPracticeCard isDusk={isDusk} />
 
-          {/* Quick Batch Action Bar when unread items exist */}
-          {!loading && unreadItems.length > 0 && (
+          {/* Quick Batch Action Bar / Active Search Results Summary */}
+          {!loading && (unreadItems.length > 0 || (isSearchActive && filteredItems.length > 0)) && (
             <div
               className={`flex items-center justify-between px-1 text-xs pb-1 ${
                 isDusk ? 'text-[#D5CEE6]' : 'text-[#5A544E]'
               }`}
             >
-              <span className="font-medium">
-                Showing {unreadItems.length} unread {unreadItems.length === 1 ? 'post' : 'posts'}
-              </span>
-              <button
-                type="button"
-                data-testid="btn-mark-all-read"
-                onClick={handleMarkAllRead}
-                className={`inline-flex items-center gap-1 rounded-lg px-2 py-1.5 -mr-2 text-xs font-semibold transition-colors active:scale-95 touch-manipulation cursor-pointer ${focusRingClass} ${
-                  isDusk
-                    ? 'text-rose-400 hover:text-rose-300'
-                    : 'text-rose-700 hover:text-rose-900'
-                }`}
-              >
-                <CheckCheck aria-hidden="true" className="w-3.5 h-3.5" />
-                <span>Mark all read</span>
-              </button>
+              {isSearchActive ? (
+                <span
+                  data-testid="search-results-count"
+                  aria-live="polite"
+                  className="font-medium"
+                >
+                  {filteredItems.length} {filteredItems.length === 1 ? 'result' : 'results'}
+                </span>
+              ) : (
+                <span className="font-medium">
+                  Showing {unreadItems.length} unread {unreadItems.length === 1 ? 'post' : 'posts'}
+                </span>
+              )}
+              {unreadItems.length > 0 && (
+                <button
+                  type="button"
+                  data-testid="btn-mark-all-read"
+                  onClick={handleMarkAllRead}
+                  className={`inline-flex items-center gap-1 rounded-lg px-2 py-1.5 -mr-2 text-xs font-semibold transition-colors active:scale-95 touch-manipulation cursor-pointer ${focusRingClass} ${
+                    isDusk
+                      ? 'text-rose-400 hover:text-rose-300'
+                      : 'text-rose-700 hover:text-rose-900'
+                  }`}
+                >
+                  <CheckCheck aria-hidden="true" className="w-3.5 h-3.5" />
+                  <span>Mark all read</span>
+                </button>
+              )}
             </div>
           )}
 
@@ -741,6 +892,8 @@ export default function HomePage() {
         {/* Empty State */}
         {!loading && filteredItems.length === 0 && (
           <div
+            data-testid={isSearchActive ? 'search-empty-state' : undefined}
+            role={isSearchActive ? 'status' : undefined}
             className={`rounded-3xl border-2 border-dashed p-8 text-center my-8 shadow-xs ${
               isDusk
                 ? 'bg-[#2A263A] border-[#3E3852]'
@@ -754,7 +907,9 @@ export default function HomePage() {
                   : 'bg-[#E5DFD3] border-[#D2C9B8] text-amber-800'
               }`}
             >
-              {activeFilter === 'SAVED' ? (
+              {isSearchActive ? (
+                <SearchIcon className="w-5 h-5" />
+              ) : activeFilter === 'SAVED' ? (
                 <BookmarkIcon className="w-5 h-5" />
               ) : (
                 <SparkleIcon className="w-5 h-5" />
@@ -765,14 +920,22 @@ export default function HomePage() {
                 isDusk ? 'text-[#F0ECF8]' : 'text-[#2A2623]'
               }`}
             >
-              {activeFilter === 'SAVED' ? 'No Saved Posts Yet' : 'No Posts in This Topic'}
+              {isSearchActive
+                ? `No posts match '${trimmedQuery}'`
+                : activeFilter === 'SAVED'
+                ? 'No Saved Posts Yet'
+                : 'No Posts in This Topic'}
             </h3>
             <p
               className={`text-xs max-w-xs mx-auto leading-relaxed ${
                 isDusk ? 'text-[#D5CEE6]' : 'text-[#5A544E]'
               }`}
             >
-              {activeFilter === 'SAVED'
+              {isSearchActive
+                ? activeFilter !== 'ALL'
+                  ? 'Try another keyword, clear the search, or switch back to "All".'
+                  : 'Try a different keyword or clear the search to browse all posts.'
+                : activeFilter === 'SAVED'
                 ? 'Tap "Save" on any post to keep it handy for quick offline reference.'
                 : 'There are currently no items under this topic tag. Check "All" or refresh for today\'s drop.'}
             </p>

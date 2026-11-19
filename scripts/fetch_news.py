@@ -107,13 +107,29 @@ class CuratedDigestResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Source Fetchers
+# Run Report State & Source Fetchers
 # ---------------------------------------------------------------------------
+
+SOURCE_ORDER = (
+    "cisa_kev",
+    "openrouter",
+    "hacker_news",
+    "status_pages",
+    "ctftime",
+)
+
+# Per-source error details recorded during the current run (source_name -> detail).
+SOURCE_ERRORS: Dict[str, str] = {}
+
+# Name of the Gemini model that answered the most recent successful fallback call.
+LAST_GEMINI_MODEL: Optional[str] = None
+
 
 def fetch_cisa_kev() -> List[Dict[str, Any]]:
     """
     Fetch CISA Known Exploited Vulnerabilities added within the last 7 days.
     """
+    SOURCE_ERRORS.pop("cisa_kev", None)
     url = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
     items: List[Dict[str, Any]] = []
     try:
@@ -153,6 +169,7 @@ def fetch_cisa_kev() -> List[Dict[str, Any]]:
                 })
         logger.info(f"CISA KEV: Fetched {len(items)} vulnerabilities added in last 7 days.")
     except Exception as e:
+        SOURCE_ERRORS["cisa_kev"] = str(e)
         logger.error(f"Failed to fetch CISA KEV catalog: {e}")
     return items
 
@@ -161,6 +178,7 @@ def fetch_openrouter_free_models() -> List[Dict[str, Any]]:
     """
     Fetch OpenRouter models whose id ends with :free.
     """
+    SOURCE_ERRORS.pop("openrouter", None)
     url = "https://openrouter.ai/api/v1/models"
     items: List[Dict[str, Any]] = []
     try:
@@ -198,6 +216,7 @@ def fetch_openrouter_free_models() -> List[Dict[str, Any]]:
             })
         logger.info(f"OpenRouter: Fetched {len(items)} free models.")
     except Exception as e:
+        SOURCE_ERRORS["openrouter"] = str(e)
         logger.error(f"Failed to fetch OpenRouter models: {e}")
     return items
 
@@ -207,6 +226,7 @@ def fetch_hacker_news() -> List[Dict[str, Any]]:
     Fetch top 30 Hacker News stories (sorted by points descending) from the
     last 36 hours with >50 points. Relevance is decided downstream by the LLM.
     """
+    SOURCE_ERRORS.pop("hacker_news", None)
     cutoff_36h = int((datetime.now(timezone.utc) - timedelta(hours=36)).timestamp())
     url = "https://hn.algolia.com/api/v1/search_by_date"
     params = {
@@ -278,6 +298,7 @@ def fetch_hacker_news() -> List[Dict[str, Any]]:
             })
         logger.info(f"Hacker News: Fetched {len(items)} top stories from last 36h.")
     except Exception as e:
+        SOURCE_ERRORS["hacker_news"] = str(e)
         logger.error(f"Failed to fetch Hacker News: {e}")
     return items
 
@@ -300,8 +321,10 @@ def fetch_status_incidents() -> List[Dict[str, Any]]:
     Fetch major/critical/high-severity incidents created in the last 36 hours
     from official public status pages (Anthropic, OpenAI, GitHub, Cloudflare, Google Cloud).
     """
+    SOURCE_ERRORS.pop("status_pages", None)
     cutoff_dt = datetime.now(timezone.utc) - timedelta(hours=36)
     items: List[Dict[str, Any]] = []
+    provider_errors: List[str] = []
 
     statuspage_providers = [
         ("anthropic", "Anthropic", "https://status.claude.com"),
@@ -367,6 +390,7 @@ def fetch_status_incidents() -> List[Dict[str, Any]]:
                     "event_start_date": None,
                 })
         except Exception as e:
+            provider_errors.append(f"{provider_name}: {e}")
             logger.error(f"Failed to fetch status incidents for {provider_name}: {e}")
 
     # Google Cloud status page (JSON list format)
@@ -443,7 +467,11 @@ def fetch_status_incidents() -> List[Dict[str, Any]]:
                 "event_start_date": None,
             })
     except Exception as e:
+        provider_errors.append(f"Google Cloud: {e}")
         logger.error(f"Failed to fetch status incidents for Google Cloud: {e}")
+
+    if provider_errors:
+        SOURCE_ERRORS["status_pages"] = "; ".join(provider_errors)
 
     logger.info(f"Status Pages: Fetched {len(items)} major/critical/high incidents from last 36h.")
     return items
@@ -454,6 +482,7 @@ def fetch_ctftime(force_ctf: bool = False) -> List[Dict[str, Any]]:
     Fetch upcoming CTF events from CTFtime.
     Runs on Mondays and Fridays, or when force_ctf is True.
     """
+    SOURCE_ERRORS.pop("ctftime", None)
     now = datetime.now(timezone.utc)
     weekday = now.weekday()  # Monday = 0, Friday = 4
 
@@ -517,6 +546,7 @@ def fetch_ctftime(force_ctf: bool = False) -> List[Dict[str, Any]]:
             })
         logger.info(f"CTFtime: Fetched {len(items)} upcoming CTF events.")
     except Exception as e:
+        SOURCE_ERRORS["ctftime"] = str(e)
         logger.error(f"Failed to fetch CTFtime events: {e}")
     return items
 
@@ -614,6 +644,8 @@ def generate_content_with_fallback(
     whenever an API call raises HTTP 429 (RESOURCE_EXHAUSTED/rate limit), HTTP 503 (UNAVAILABLE),
     or a transient server error.
     """
+    global LAST_GEMINI_MODEL
+    LAST_GEMINI_MODEL = None
     last_error: Optional[Exception] = None
     for idx, model_name in enumerate(MODEL_FALLBACK_CHAIN):
         is_gemini_3 = model_name.startswith("gemini-3.")
@@ -648,6 +680,7 @@ def generate_content_with_fallback(
                 )
             else:
                 logger.info("[LLM] Primary '%s' succeeded.", model_name)
+            LAST_GEMINI_MODEL = model_name
             return raw_text
         except Exception as e:
             # Cascade through the ENTIRE fallback chain on ANY error (not just
@@ -889,10 +922,89 @@ News items to translate:
 
 
 # ---------------------------------------------------------------------------
+# Run Report Formatting & GitHub Actions Summary
+# ---------------------------------------------------------------------------
+
+def format_run_report_markdown(report: Dict[str, Any]) -> str:
+    """Render the pipeline run report as Markdown for GITHUB_STEP_SUMMARY."""
+    source_counts: Dict[str, Any] = report.get("source_counts") or {}
+    failed_sources: List[str] = list(report.get("failed_sources") or [])
+    failed_set = set(failed_sources)
+
+    lines: List[str] = [
+        "## Daily Digest Run Report",
+        "",
+        "| Source | Candidates | Status |",
+        "| --- | --- | --- |",
+    ]
+    for source in SOURCE_ORDER:
+        count = source_counts.get(source)
+        count_display = "n/a" if count is None else str(count)
+        if source in failed_set:
+            source_status = "error"
+        elif count == "skipped":
+            source_status = "skipped"
+        elif count is None:
+            source_status = "not run"
+        else:
+            source_status = "ok"
+        lines.append(f"| {source} | {count_display} | {source_status} |")
+
+    unseen_count = report.get("unseen_count")
+    unseen_display = "n/a" if unseen_count is None else str(unseen_count)
+    gemini_model = report.get("gemini_model") or "none"
+    curated_count = report.get("curated_count", 0)
+    breaking_count = report.get("breaking_count", 0)
+    failed_display = ", ".join(failed_sources) if failed_sources else "none"
+    run_status = report.get("status") or "unknown"
+
+    lines.extend([
+        "",
+        f"- Status: {run_status}",
+        f"- Failed sources: {failed_display}",
+        f"- Unseen candidates: {unseen_display}",
+        f"- Gemini model: {gemini_model}",
+        f"- Curated items: {curated_count} ({breaking_count} breaking)",
+        "",
+        "### Curated Titles",
+        "",
+    ])
+
+    curated_titles: List[str] = list(report.get("curated_titles") or [])
+    if curated_titles:
+        for title in curated_titles:
+            clean_title = " ".join(str(title).split())
+            lines.append(f"- {clean_title}")
+    else:
+        lines.append("- None")
+
+    return "\n".join(lines) + "\n"
+
+
+def write_github_step_summary(report: Dict[str, Any]) -> None:
+    """Append the Markdown run report to GITHUB_STEP_SUMMARY when set."""
+    summary_path = (os.getenv("GITHUB_STEP_SUMMARY") or "").strip()
+    if not summary_path:
+        return
+
+    markdown = format_run_report_markdown(report)
+    try:
+        needs_separator = os.path.exists(summary_path) and os.path.getsize(summary_path) > 0
+        with open(summary_path, "a", encoding="utf-8") as summary_file:
+            if needs_separator:
+                summary_file.write("\n")
+            summary_file.write(markdown)
+    except OSError as e:
+        logger.warning("Failed to write run report to GITHUB_STEP_SUMMARY: %s", e)
+
+
+# ---------------------------------------------------------------------------
 # Main Orchestrator
 # ---------------------------------------------------------------------------
 
 def main() -> None:
+    global LAST_GEMINI_MODEL
+
     parser = argparse.ArgumentParser(description="CyberSec & Tech Digest Ingestion Pipeline")
     parser.add_argument(
         "--force-ctf",
@@ -950,71 +1062,121 @@ def main() -> None:
         backfill_thai_translations(supabase_client, gemini_api_key)
         return
 
-    # 1. Fetch from all 5 sources
-    logger.info("=== Starting Data Collection ===")
-    cisa_items = fetch_cisa_kev()
-    openrouter_items = fetch_openrouter_free_models()
-    hn_items = fetch_hacker_news()
-    status_items = fetch_status_incidents()
-    ctftime_skipped = not args.force_ctf and datetime.now(timezone.utc).weekday() not in (0, 4)
-    ctftime_items = fetch_ctftime(force_ctf=args.force_ctf)
+    SOURCE_ERRORS.clear()
+    LAST_GEMINI_MODEL = None
 
-    candidates: List[Dict[str, Any]] = [
-        *cisa_items,
-        *openrouter_items,
-        *hn_items,
-        *status_items,
-        *ctftime_items,
-    ]
+    report: Dict[str, Any] = {
+        "source_counts": {source: None for source in SOURCE_ORDER},
+        "failed_sources": [],
+        "unseen_count": None,
+        "gemini_model": None,
+        "curated_count": 0,
+        "breaking_count": 0,
+        "curated_titles": [],
+        "status": "running",
+    }
 
-    logger.info("=== Total Candidate Items Collected: %d ===", len(candidates))
+    try:
+        # 1. Fetch from all 5 sources
+        logger.info("=== Starting Data Collection ===")
+        cisa_items = fetch_cisa_kev()
+        report["source_counts"]["cisa_kev"] = len(cisa_items)
 
-    if args.dry_run:
-        ctftime_display = "skipped" if ctftime_skipped else str(len(ctftime_items))
-        print("\n--- DRY RUN SOURCE COUNTS ---")
-        print(
-            f"cisa_kev: {len(cisa_items)} | openrouter: {len(openrouter_items)} "
-            f"| hacker_news: {len(hn_items)} | status_pages: {len(status_items)} "
-            f"| ctftime: {ctftime_display}"
-        )
-        print("\n--- DRY RUN CANDIDATE SUMMARY ---")
-        for i, item in enumerate(candidates, 1):
-            print(f"[{i}] [{item['category']}] {item['title']}")
-            print(f"    Source ID: {item['source_id']}")
-            print(f"    URL: {item['url']}")
-            if item.get("event_start_date"):
-                print(f"    Event Start: {item['event_start_date']}")
-        print(f"\nDry run complete. Found {len(candidates)} candidate items.")
-        return
+        openrouter_items = fetch_openrouter_free_models()
+        report["source_counts"]["openrouter"] = len(openrouter_items)
 
-    # Initialize Supabase client (only needed outside --dry-run)
-    supabase_client: Client = create_client(supabase_url, supabase_key)
+        hn_items = fetch_hacker_news()
+        report["source_counts"]["hacker_news"] = len(hn_items)
 
-    # 2. Query deduplication state
-    existing_ids = get_existing_source_ids(supabase_client)
+        status_items = fetch_status_incidents()
+        report["source_counts"]["status_pages"] = len(status_items)
 
-    # 3. Filter unseen items
-    unseen_items = [item for item in candidates if item["source_id"] not in existing_ids]
-    logger.info(f"Unseen items requiring processing: {len(unseen_items)} (out of {len(candidates)} total)")
+        ctftime_skipped = not args.force_ctf and datetime.now(timezone.utc).weekday() not in (0, 4)
+        ctftime_items = fetch_ctftime(force_ctf=args.force_ctf)
+        report["source_counts"]["ctftime"] = "skipped" if ctftime_skipped else len(ctftime_items)
 
-    candidate_source_ids = [item["source_id"] for item in candidates if item.get("source_id")]
+        candidates: List[Dict[str, Any]] = [
+            *cisa_items,
+            *openrouter_items,
+            *hn_items,
+            *status_items,
+            *ctftime_items,
+        ]
 
-    if not unseen_items:
+        logger.info("=== Total Candidate Items Collected: %d ===", len(candidates))
+
+        if args.dry_run:
+            report["status"] = "dry-run"
+            ctftime_display = "skipped" if ctftime_skipped else str(len(ctftime_items))
+            print("\n--- DRY RUN SOURCE COUNTS ---")
+            print(
+                f"cisa_kev: {len(cisa_items)} | openrouter: {len(openrouter_items)} "
+                f"| hacker_news: {len(hn_items)} | status_pages: {len(status_items)} "
+                f"| ctftime: {ctftime_display}"
+            )
+            print("\n--- DRY RUN CANDIDATE SUMMARY ---")
+            for i, item in enumerate(candidates, 1):
+                print(f"[{i}] [{item['category']}] {item['title']}")
+                print(f"    Source ID: {item['source_id']}")
+                print(f"    URL: {item['url']}")
+                if item.get("event_start_date"):
+                    print(f"    Event Start: {item['event_start_date']}")
+            print(f"\nDry run complete. Found {len(candidates)} candidate items.")
+            return
+
+        if not candidates:
+            report["status"] = "failed (all sources returned zero candidates)"
+            logger.error("All news sources returned zero candidates or failed. Aborting run.")
+            sys.exit(1)
+
+        # Initialize Supabase client (only needed outside --dry-run)
+        supabase_client: Client = create_client(supabase_url, supabase_key)
+
+        # 2. Query deduplication state
+        existing_ids = get_existing_source_ids(supabase_client)
+
+        # 3. Filter unseen items
+        unseen_items = [item for item in candidates if item["source_id"] not in existing_ids]
+        report["unseen_count"] = len(unseen_items)
+        logger.info(f"Unseen items requiring processing: {len(unseen_items)} (out of {len(candidates)} total)")
+
+        candidate_source_ids = [item["source_id"] for item in candidates if item.get("source_id")]
+
+        if not unseen_items:
+            record_seen_sources(supabase_client, candidate_source_ids)
+            report["status"] = "ok (no unseen items)"
+            logger.info("No new unseen items to curate today. Database is already up to date.")
+            return
+
+        # 4. Curate and summarize via Gemini
+        curated_items = curate_with_gemini(unseen_items, gemini_api_key=gemini_api_key)
+        report["gemini_model"] = LAST_GEMINI_MODEL
+        report["curated_count"] = len(curated_items)
+        report["breaking_count"] = sum(1 for item in curated_items if item.is_breaking)
+        report["curated_titles"] = [
+            f"[BREAKING] {item.title}" if item.is_breaking else item.title
+            for item in curated_items
+        ]
+
+        # 5. Save to Supabase
+        save_to_supabase(supabase_client, curated_items)
+
+        # 6. Mark candidates as seen ONLY after curation and save succeeded. If Gemini or
+        #    the save fails, the run exits above and these items are retried tomorrow
+        #    instead of being silently dropped forever.
         record_seen_sources(supabase_client, candidate_source_ids)
-        logger.info("No new unseen items to curate today. Database is already up to date.")
-        return
-
-    # 4. Curate and summarize via Gemini
-    curated_items = curate_with_gemini(unseen_items, gemini_api_key=gemini_api_key)
-
-    # 5. Save to Supabase
-    save_to_supabase(supabase_client, curated_items)
-
-    # 6. Mark candidates as seen ONLY after curation and save succeeded. If Gemini or
-    #    the save fails, the run exits above and these items are retried tomorrow
-    #    instead of being silently dropped forever.
-    record_seen_sources(supabase_client, candidate_source_ids)
-    logger.info("=== Ingestion Pipeline Completed Successfully ===")
+        report["status"] = "ok"
+        logger.info("=== Ingestion Pipeline Completed Successfully ===")
+    except Exception as exc:
+        report["status"] = f"failed ({type(exc).__name__})"
+        raise
+    finally:
+        report["failed_sources"] = [
+            source for source in SOURCE_ORDER if source in SOURCE_ERRORS
+        ]
+        if report["gemini_model"] is None and LAST_GEMINI_MODEL is not None:
+            report["gemini_model"] = LAST_GEMINI_MODEL
+        write_github_step_summary(report)
 
 
 if __name__ == "__main__":
