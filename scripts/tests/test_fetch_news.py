@@ -761,6 +761,99 @@ class TestGetExistingSourceIds(unittest.TestCase):
         self.assertTrue(any("seen_sources" in msg for msg in cm.output))
 
 
+class TestGetRecentPublishedTitles(unittest.TestCase):
+    """Tests for get_recent_published_titles."""
+
+    def _make_supabase_mock(self, rows=None, error=None):
+        supabase_client = mock.MagicMock()
+        table_mock = supabase_client.table.return_value
+        select_mock = table_mock.select.return_value
+        gte_mock = select_mock.gte.return_value
+        order_mock = gte_mock.order.return_value
+        limit_mock = order_mock.limit.return_value
+        if error is not None:
+            limit_mock.execute.side_effect = error
+        else:
+            limit_mock.execute.return_value = mock.MagicMock(data=rows)
+        return supabase_client, table_mock, select_mock, gte_mock, order_mock, limit_mock
+
+    def test_returns_recent_titles_with_expected_query_and_72h_cutoff(self):
+        rows = [
+            {
+                "title": "Google Launches Gemini 4 Neon",
+                "created_at": "2026-11-17T10:00:00+00:00",
+            },
+            {
+                "title": "  Java4Shell\n  Critical RCE  ",
+                "created_at": "2026-11-16T08:00:00+00:00",
+            },
+            {
+                "title": None,
+                "created_at": "2026-11-16T07:00:00+00:00",
+            },
+            {
+                "title": "   ",
+                "created_at": "2026-11-16T06:00:00+00:00",
+            },
+            None,
+        ]
+        (
+            supabase_client,
+            table_mock,
+            select_mock,
+            gte_mock,
+            order_mock,
+            limit_mock,
+        ) = self._make_supabase_mock(rows=rows)
+
+        with mock.patch("fetch_news.datetime", _FixedTuesdayDatetime):
+            titles = fetch_news.get_recent_published_titles(supabase_client)
+
+        self.assertEqual(
+            titles,
+            ["Google Launches Gemini 4 Neon", "Java4Shell Critical RCE"],
+        )
+        supabase_client.table.assert_called_once_with("news_items")
+        table_mock.select.assert_called_once_with("title, created_at")
+        select_mock.gte.assert_called_once_with(
+            "created_at", "2026-11-14T12:00:00+00:00"
+        )
+        gte_mock.order.assert_called_once_with("created_at", desc=True)
+        order_mock.limit.assert_called_once_with(60)
+        limit_mock.execute.assert_called_once_with()
+
+    def test_respects_custom_hours_and_caps_at_60_rows(self):
+        rows = [
+            {"title": f"Title {i}", "created_at": "2026-11-17T00:00:00+00:00"}
+            for i in range(75)
+        ]
+        supabase_client, _, select_mock, _, _, _ = self._make_supabase_mock(rows=rows)
+
+        with mock.patch("fetch_news.datetime", _FixedTuesdayDatetime):
+            titles = fetch_news.get_recent_published_titles(supabase_client, hours=24)
+
+        select_mock.gte.assert_called_once_with(
+            "created_at", "2026-11-16T12:00:00+00:00"
+        )
+        self.assertEqual(len(titles), 60)
+        self.assertEqual(titles[0], "Title 0")
+        self.assertEqual(titles[-1], "Title 59")
+
+    def test_logs_warning_and_returns_empty_list_on_exception(self):
+        supabase_client, _, _, _, _, _ = self._make_supabase_mock(
+            error=RuntimeError("Supabase connection refused")
+        )
+
+        with self.assertLogs(fetch_news.logger, level="WARNING") as cm:
+            titles = fetch_news.get_recent_published_titles(supabase_client)
+
+        self.assertEqual(titles, [])
+        self.assertTrue(
+            any("recent published titles" in msg.lower() for msg in cm.output),
+            f"Expected warning log for recent published titles failure, got: {cm.output}",
+        )
+
+
 class TestGenerateContentWithFallback(unittest.TestCase):
     """Tests for generate_content_with_fallback."""
 
@@ -951,6 +1044,53 @@ class TestCurateWithGemini(unittest.TestCase):
         self.assertEqual(curated[1].title, "First n1")
         self.assertFalse(curated[1].is_breaking)
 
+    @mock.patch("fetch_news.generate_content_with_fallback")
+    @mock.patch("fetch_news.genai.Client")
+    def test_prompt_includes_recent_titles_section_when_titles_provided(
+        self, mock_client_cls, mock_generate
+    ):
+        mock_generate.return_value = json.dumps({"curated_items": []})
+        recent = [
+            "Google Launches Gemini 4 Neon",
+            "Java4Shell Critical RCE",
+        ]
+
+        fetch_news.curate_with_gemini(
+            self.SAMPLE_UNSEEN,
+            gemini_api_key="test-gemini-key",
+            recent_titles=recent,
+        )
+
+        mock_generate.assert_called_once()
+        prompt = mock_generate.call_args.args[1]
+        self.assertIn("ALREADY PUBLISHED IN THE LAST 72 HOURS", prompt)
+        self.assertIn("- Google Launches Gemini 4 Neon", prompt)
+        self.assertIn("- Java4Shell Critical RCE", prompt)
+        self.assertIn("materially new development", prompt)
+        self.assertIn("do NOT mark it breaking again", prompt)
+
+    @mock.patch("fetch_news.generate_content_with_fallback")
+    @mock.patch("fetch_news.genai.Client")
+    def test_prompt_omits_recent_titles_section_when_empty_or_none(
+        self, mock_client_cls, mock_generate
+    ):
+        mock_generate.return_value = json.dumps({"curated_items": []})
+
+        fetch_news.curate_with_gemini(
+            self.SAMPLE_UNSEEN,
+            gemini_api_key="test-gemini-key",
+        )
+        fetch_news.curate_with_gemini(
+            self.SAMPLE_UNSEEN,
+            gemini_api_key="test-gemini-key",
+            recent_titles=[],
+        )
+
+        self.assertEqual(mock_generate.call_count, 2)
+        for call in mock_generate.call_args_list:
+            prompt = call.args[1]
+            self.assertNotIn("ALREADY PUBLISHED IN THE LAST 72 HOURS", prompt)
+
 
 class TestSaveToSupabase(unittest.TestCase):
     """Tests for save_to_supabase."""
@@ -1055,8 +1195,11 @@ class TestMain(unittest.TestCase):
         stack.enter_context(
             mock.patch("fetch_news.create_client", return_value=fake_supabase)
         )
-        stack.enter_context(
+        mock_existing = stack.enter_context(
             mock.patch("fetch_news.get_existing_source_ids", return_value=set())
+        )
+        mock_recent = stack.enter_context(
+            mock.patch("fetch_news.get_recent_published_titles", return_value=[])
         )
         mock_curate = stack.enter_context(mock.patch("fetch_news.curate_with_gemini"))
         mock_save = stack.enter_context(mock.patch("fetch_news.save_to_supabase"))
@@ -1064,6 +1207,8 @@ class TestMain(unittest.TestCase):
 
         return {
             "supabase": fake_supabase,
+            "existing_ids": mock_existing,
+            "recent_titles": mock_recent,
             "curate": mock_curate,
             "save": mock_save,
             "record_seen": mock_record,
@@ -1119,6 +1264,49 @@ class TestMain(unittest.TestCase):
                 fetch_news.main()
 
             mocks["record_seen"].assert_not_called()
+
+    def test_passes_recent_published_titles_to_curate_after_existing_ids(self):
+        with ExitStack() as stack:
+            mocks = self._enter_main_mocks(stack, self.SAMPLE_CANDIDATES)
+            recent = ["Google Launches Gemini 4 Neon", "Java4Shell Critical RCE"]
+            curated_item = _make_curated_item("hn_123")
+            call_order = []
+
+            def _get_existing(client):
+                call_order.append(("get_existing_source_ids", client))
+                return set()
+
+            def _get_recent(client):
+                call_order.append(("get_recent_published_titles", client))
+                return list(recent)
+
+            def _curate(unseen_items, gemini_api_key, recent_titles=None):
+                call_order.append(("curate_with_gemini", unseen_items, recent_titles))
+                return [curated_item]
+
+            mocks["existing_ids"].side_effect = _get_existing
+            mocks["recent_titles"].side_effect = _get_recent
+            mocks["curate"].side_effect = _curate
+
+            fetch_news.main()
+
+            self.assertEqual(
+                [entry[0] for entry in call_order],
+                [
+                    "get_existing_source_ids",
+                    "get_recent_published_titles",
+                    "curate_with_gemini",
+                ],
+            )
+            self.assertIs(call_order[0][1], mocks["supabase"])
+            self.assertIs(call_order[1][1], mocks["supabase"])
+            self.assertEqual(call_order[2][1], self.SAMPLE_CANDIDATES)
+            self.assertEqual(call_order[2][2], recent)
+            mocks["curate"].assert_called_once_with(
+                self.SAMPLE_CANDIDATES,
+                gemini_api_key="test-gemini-key",
+                recent_titles=recent,
+            )
 
     def test_dry_run_with_backfill_th_logs_error_and_exits_2_without_creating_clients(self):
         with ExitStack() as stack:

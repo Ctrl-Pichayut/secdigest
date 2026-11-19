@@ -1002,6 +1002,48 @@ def get_existing_source_ids(supabase_client: Client) -> Set[str]:
     return existing
 
 
+def get_recent_published_titles(
+    supabase_client: Client,
+    hours: int = 72,
+) -> List[str]:
+    """Query titles published to public.news_items within the last `hours` hours (newest first, max 60)."""
+    cutoff_iso = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+    try:
+        resp = (
+            supabase_client.table("news_items")
+            .select("title, created_at")
+            .gte("created_at", cutoff_iso)
+            .order("created_at", desc=True)
+            .limit(60)
+            .execute()
+        )
+        rows = resp.data or []
+        titles: List[str] = []
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            raw_title = row.get("title")
+            if not isinstance(raw_title, str):
+                continue
+            cleaned = " ".join(raw_title.split())
+            if cleaned:
+                titles.append(cleaned)
+                if len(titles) >= 60:
+                    break
+        logger.info(
+            "Retrieved %d recent published titles from public.news_items (last %dh).",
+            len(titles),
+            hours,
+        )
+        return titles
+    except Exception as e:
+        logger.warning(
+            "Could not retrieve recent published titles from public.news_items: %s",
+            e,
+        )
+        return []
+
+
 def record_seen_sources(supabase_client: Client, source_ids: List[str]) -> None:
     """Upsert all candidate source_ids into public.seen_sources so rejected items never loop back."""
     if not source_ids:
@@ -1121,7 +1163,8 @@ def generate_content_with_fallback(
 
 def curate_with_gemini(
     unseen_items: List[Dict[str, Any]],
-    gemini_api_key: str
+    gemini_api_key: str,
+    recent_titles: Optional[List[str]] = None,
 ) -> List[CuratedNewsItem]:
     """
     Send unseen candidate items to Gemini structured outputs using MODEL_FALLBACK_CHAIN
@@ -1131,6 +1174,23 @@ def curate_with_gemini(
         return []
 
     client = genai.Client(api_key=gemini_api_key)
+
+    cleaned_recent_titles = [
+        " ".join(title.split())
+        for title in (recent_titles or [])
+        if isinstance(title, str) and title.strip()
+    ]
+    recent_titles_section = ""
+    if cleaned_recent_titles:
+        titles_list = "\n".join(f"- {title}" for title in cleaned_recent_titles)
+        recent_titles_section = (
+            "\nALREADY PUBLISHED IN THE LAST 72 HOURS:\n"
+            "Do not select a candidate that covers the same story or the same vulnerability / product launch "
+            "as any of these, unless it adds a materially new development (e.g. a patch released, active "
+            "exploitation confirmed, an outage resolved with a root cause); in that case make the title say "
+            "what is new and do NOT mark it breaking again (set is_breaking=false).\n"
+            f"{titles_list}\n"
+        )
 
     prompt = f"""You are the intelligence curator for a personal daily CyberSec & Tech digest web application.
 The target audience is a 2nd-year Computer Science student specializing in Cybersecurity, Cloud Security, CTFs, and AI/Developer Tools.
@@ -1169,7 +1229,7 @@ YOUR OBJECTIVES:
    - tldr_th: Exactly 2-3 lines of natural, clear Thai summary explaining the same technical points. Keep standard English technical keywords intact (RCE, JWT, MoE, Path Traversal, WAF, etc.) without awkward or literal over-translation.
    - actionable_value_th: Exactly 1-2 lines in natural, clear Thai explaining concrete value for a student.
    - tech_terms_th: List of 1 to 3 difficult, specialized technical keywords from this news item (e.g. 'RCE', 'Zero-Day', 'Weights', 'Buffer Overflow'). Each object has 'term' (the English keyword) and 'meaning' (a simple 1-line explanation in clear Thai tailored for a 2nd-year CS student).
-
+{recent_titles_section}
 Candidate items:
 {json.dumps(unseen_items, indent=2)}
 """
@@ -1548,7 +1608,12 @@ def main() -> None:
             return
 
         # 4. Curate and summarize via Gemini
-        curated_items = curate_with_gemini(unseen_items, gemini_api_key=gemini_api_key)
+        recent_titles = get_recent_published_titles(supabase_client)
+        curated_items = curate_with_gemini(
+            unseen_items,
+            gemini_api_key=gemini_api_key,
+            recent_titles=recent_titles,
+        )
         report["gemini_model"] = LAST_GEMINI_MODEL
         report["curated_count"] = len(curated_items)
         report["breaking_count"] = sum(1 for item in curated_items if item.is_breaking)
