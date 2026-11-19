@@ -128,8 +128,44 @@ export default function PracticeSession({
   const weekSessions = computeStats(cards, reviews, sessions).weekSessions;
   const progress = queue.length > 0 ? (pos + (answer !== null ? 1 : 0)) / queue.length : 1;
 
+  const rateRef = useRef(rate);
+  useEffect(() => {
+    rateRef.current = rate;
+  });
+
+  useEffect(() => {
+    if (done || answer === null) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Enter' || e.repeat || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+      const target = e.target as HTMLElement | null;
+      if (target) {
+        if (
+          target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
+          target.isContentEditable
+        ) {
+          return;
+        }
+        const interactive = target.closest('button, a, [role="button"]');
+        if (interactive && !(interactive as HTMLButtonElement).disabled) {
+          return;
+        }
+      }
+      e.preventDefault();
+      rateRef.current(answer ? Rating.Good : Rating.Again);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [done, answer]);
+
   return (
-    <div className={`fixed inset-0 z-50 overflow-y-auto overscroll-contain ${p.page}`}>
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Practice session"
+      className={`fixed inset-0 z-50 overflow-y-auto overscroll-contain ${p.page}`}
+    >
       <div className="max-w-md mx-auto min-h-full flex flex-col">
         {/* Top bar */}
         <div className={`sticky top-0 z-10 px-4 pt-4 pb-3 backdrop-blur-md ${isDusk ? 'bg-[#1E1B29]/95' : 'bg-[#E5DFD3]/95'}`}>
@@ -138,11 +174,18 @@ export default function PracticeSession({
               type="button"
               onClick={close}
               aria-label="End session"
-              className={`w-11 h-11 shrink-0 rounded-2xl border flex items-center justify-center touch-manipulation ${p.chipIdle}`}
+              className={`w-11 h-11 shrink-0 rounded-2xl border flex items-center justify-center touch-manipulation ${p.chipIdle} ${p.focusRing}`}
             >
-              <X className="w-4 h-4" />
+              <X className="w-4 h-4" aria-hidden="true" />
             </button>
-            <div className={`flex-1 h-2.5 rounded-full overflow-hidden border ${p.track}`}>
+            <div
+              role="progressbar"
+              aria-valuenow={done ? queue.length : Math.min(pos + 1, queue.length)}
+              aria-valuemin={0}
+              aria-valuemax={queue.length}
+              aria-label="Session progress"
+              className={`flex-1 h-2.5 rounded-full overflow-hidden border ${p.track}`}
+            >
               <motion.div
                 className="h-full bg-gradient-to-r from-amber-400 via-rose-400 to-violet-500 rounded-full"
                 initial={false}
@@ -220,7 +263,7 @@ export default function PracticeSession({
                 <button
                   type="button"
                   onClick={onClose}
-                  className={`min-h-[52px] rounded-2xl border text-sm font-bold touch-manipulation ${p.chipIdle}`}
+                  className={`min-h-[52px] rounded-2xl border text-sm font-bold touch-manipulation ${p.chipIdle} ${p.focusRing}`}
                 >
                   Done
                 </button>
@@ -228,7 +271,7 @@ export default function PracticeSession({
                   type="button"
                   whileTap={{ scale: 0.97 }}
                   onClick={() => onAnother(2)}
-                  className="min-h-[52px] rounded-2xl text-sm font-bold text-white bg-gradient-to-tr from-amber-500 via-rose-500 to-violet-600 shadow-md shadow-rose-500/20 touch-manipulation"
+                  className={`min-h-[52px] rounded-2xl text-sm font-bold text-white bg-gradient-to-tr from-amber-500 via-rose-500 to-violet-600 shadow-md shadow-rose-500/20 touch-manipulation ${p.focusRing}`}
                 >
                   +2 minutes
                 </motion.button>
@@ -251,7 +294,7 @@ export default function PracticeSession({
                   </span>
                   {current.isNew && (
                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-gradient-to-tr from-amber-500 to-rose-500 text-white">
-                      <Sparkles className="w-3 h-3" /> New
+                      <Sparkles className="w-3 h-3" aria-hidden="true" /> New
                     </span>
                   )}
                   {current.retry && (
@@ -268,26 +311,28 @@ export default function PracticeSession({
 
                 <Exercise key={attempt} card={current.card} isDusk={isDusk} onAnswered={onAnswered} />
 
-                {answer !== null && (
-                  <motion.div
-                    ref={revealRef}
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className={`rounded-2xl p-3.5 border scroll-mb-40 ${answer ? p.good : p.bad}`}
-                  >
-                    <div className="flex items-center gap-1.5 text-sm font-black mb-1">
-                      {answer ? (
-                        <>
-                          <span>Correct</span>
-                          <CheckIcon className="w-4 h-4 shrink-0" />
-                        </>
-                      ) : (
-                        'Not quite'
-                      )}
-                    </div>
-                    <p className="text-[13px] leading-relaxed font-medium">{current.card.explanation}</p>
-                  </motion.div>
-                )}
+                <div role="status" aria-live="polite" aria-atomic="true">
+                  {answer !== null && (
+                    <motion.div
+                      ref={revealRef}
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className={`rounded-2xl p-3.5 border scroll-mb-40 ${answer ? p.good : p.bad}`}
+                    >
+                      <div className="flex items-center gap-1.5 text-sm font-black mb-1">
+                        {answer ? (
+                          <>
+                            <span>Correct</span>
+                            <CheckIcon className="w-4 h-4 shrink-0" />
+                          </>
+                        ) : (
+                          'Not quite'
+                        )}
+                      </div>
+                      <p className="text-[13px] leading-relaxed font-medium">{current.card.explanation}</p>
+                    </motion.div>
+                  )}
+                </div>
               </motion.div>
             )
           )}
@@ -309,7 +354,8 @@ export default function PracticeSession({
                     type="button"
                     whileTap={{ scale: 0.95 }}
                     onClick={() => rate(grade)}
-                    className={`min-h-[56px] rounded-2xl text-sm font-bold touch-manipulation flex flex-col items-center justify-center ${
+                    aria-keyshortcuts={grade === Rating.Good ? 'Enter' : undefined}
+                    className={`min-h-[56px] rounded-2xl text-sm font-bold touch-manipulation flex flex-col items-center justify-center ${p.focusRing} ${
                       grade === Rating.Good
                         ? 'text-white bg-gradient-to-tr from-amber-500 via-rose-500 to-violet-600 shadow-md shadow-rose-500/20'
                         : `border ${p.chipIdle}`
@@ -325,7 +371,8 @@ export default function PracticeSession({
                 type="button"
                 whileTap={{ scale: 0.97 }}
                 onClick={() => rate(Rating.Again)}
-                className="w-full min-h-[56px] rounded-2xl text-sm font-bold text-white bg-gradient-to-tr from-amber-500 via-rose-500 to-violet-600 shadow-md shadow-rose-500/20 touch-manipulation"
+                aria-keyshortcuts="Enter"
+                className={`w-full min-h-[56px] rounded-2xl text-sm font-bold text-white bg-gradient-to-tr from-amber-500 via-rose-500 to-violet-600 shadow-md shadow-rose-500/20 touch-manipulation ${p.focusRing}`}
               >
                 Continue{current && !current.retry ? ' · you’ll see it again at the end' : ''}
               </motion.button>

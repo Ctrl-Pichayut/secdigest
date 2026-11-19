@@ -1314,6 +1314,393 @@
     "explanation": "Python strips all assert statements when run with -O (optimized mode), silently disabling authorization checks. Always use an explicit if check that raises an exception for security and input validation."
   },
   {
+    "id": "py-085",
+    "lang": "python",
+    "topic": "Bytes & encodings",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "b = b'ABC'\nprint(b[0], b[0:1], b == 'ABC')",
+    "choices": [
+      "65 b'A' False",
+      "b'A' b'A' False",
+      "65 b'A' True",
+      "A A True"
+    ],
+    "answer": 0,
+    "explanation": "Indexing a bytes object returns an integer (0-255), while slicing returns a bytes object. A bytes object is never equal to a str, even when the characters match."
+  },
+  {
+    "id": "py-086",
+    "lang": "python",
+    "topic": "Bytes & encodings",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "raw = b'ok\\xc3\\xa9\\xe2\\x82\\xac'\ntext = raw.decode('utf-8')\nprint(len(raw), len(text))",
+    "choices": [
+      "7 4",
+      "7 7",
+      "4 4",
+      "7 5"
+    ],
+    "answer": 0,
+    "explanation": "UTF-8 uses 1 to 4 bytes per character: 'o' and 'k' take 1 byte each, \\xc3\\xa9 takes 2 bytes, and \\xe2\\x82\\xac takes 3 bytes. That gives 7 bytes but only 4 characters, which matters for Content-Length headers and buffer limits."
+  },
+  {
+    "id": "py-087",
+    "lang": "python",
+    "topic": "Bytes & encodings",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "a = 'café'.encode('ascii', errors='ignore')\nb = b'hi\\xff'.decode('utf-8', errors='replace')\nprint(a, len(b))",
+    "choices": [
+      "b'caf' 3",
+      "b'caf?' 3",
+      "b'caf' 2",
+      "UnicodeEncodeError"
+    ],
+    "answer": 0,
+    "explanation": "errors='ignore' drops characters that cannot be encoded in ASCII, leaving b'caf'. errors='replace' substitutes one U+FFFD replacement character for the invalid UTF-8 byte 0xff, keeping length 3 instead of raising UnicodeDecodeError."
+  },
+  {
+    "id": "py-088",
+    "lang": "python",
+    "topic": "Bytes & encodings",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "raw = bytes.fromhex('de ad be ef')\nprint(len(raw), raw[:2].hex(':'))",
+    "choices": [
+      "4 de:ad",
+      "4 de:ad:be:ef",
+      "ValueError",
+      "8 de:ad"
+    ],
+    "answer": 0,
+    "explanation": "bytes.fromhex() ignores ASCII whitespace, so 'de ad be ef' parses into 4 bytes. Passing ':' to .hex() inserts a separator between bytes, which is handy for formatting MAC addresses and fingerprints."
+  },
+  {
+    "id": "py-089",
+    "lang": "python",
+    "topic": "Bytes & encodings",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import base64\ndata = b'\\xfb\\xff'\na = base64.b64encode(data).decode()\nb = base64.urlsafe_b64encode(data).decode()\nprint(a, b)",
+    "choices": [
+      "+/8= -_8=",
+      "+/8= +/8=",
+      "+/8 -_8",
+      "-_8= +/8="
+    ],
+    "answer": 0,
+    "explanation": "Standard Base64 uses '+' and '/', whereas urlsafe_b64encode replaces them with '-' and '_' so tokens survive URLs and headers safely. Both keep '=' padding when the input length is not a multiple of 3."
+  },
+  {
+    "id": "py-090",
+    "lang": "python",
+    "topic": "Bytes & encodings",
+    "kind": "bug",
+    "prompt": "JWT payloads use URL-safe Base64 ('-' and '_'), which this silently strips. Which line is wrong?",
+    "lines": [
+      "def decode_jwt_part(part):",
+      "    padded = part + '=' * (-len(part) % 4)",
+      "    raw = base64.b64decode(padded)",
+      "    return raw.decode('utf-8')"
+    ],
+    "bugLine": 2,
+    "fixedLine": "    raw = base64.urlsafe_b64decode(padded)",
+    "explanation": "Standard b64decode expects '+' and '/' and silently ignores '-' and '_' by default, corrupting decoded bytes. Use base64.urlsafe_b64decode() when decoding JWT segments or URL tokens."
+  },
+  {
+    "id": "py-091",
+    "lang": "python",
+    "topic": "Bytes & encodings",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "n = int.from_bytes(b'\\x01\\x02', 'big')\nle = (258).to_bytes(2, 'little')\nprint(n, le.hex())",
+    "choices": [
+      "258 0201",
+      "258 0102",
+      "513 0201",
+      "513 0102"
+    ],
+    "answer": 0,
+    "explanation": "In big-endian byte order, b'\\x01\\x02' is 1 * 256 + 2 = 258. Converting 258 back to 2 little-endian bytes puts the least significant byte first, giving 0201."
+  },
+  {
+    "id": "py-092",
+    "lang": "python",
+    "topic": "Bytes & encodings",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import struct\npkt = struct.pack('!H', 513) + struct.pack('<I', 1)\na, = struct.unpack('>H', pkt[:2])\nprint(len(pkt), a, pkt[2:].hex())",
+    "choices": [
+      "6 513 01000000",
+      "6 258 01000000",
+      "6 513 00000001",
+      "8 513 01000000"
+    ],
+    "answer": 0,
+    "explanation": "'!' (network byte order) and '>' are both big-endian with standard sizes, so '!H' packs 513 into 2 bytes and '>H' reads back 513. '<I' packs 1 into 4 little-endian bytes (01000000), giving 6 bytes total with no alignment padding."
+  },
+  {
+    "id": "py-093",
+    "lang": "python",
+    "topic": "Bytes & encodings",
+    "kind": "bug",
+    "prompt": "Network bytes b'\\x00\\x50' (port 80) decode as 20480 instead of 80. Which line is wrong?",
+    "lines": [
+      "def read_port(header):",
+      "    if len(header) < 2:",
+      "        raise ValueError('short header')",
+      "    return struct.unpack('<H', header[:2])[0]"
+    ],
+    "bugLine": 3,
+    "fixedLine": "    return struct.unpack('!H', header[:2])[0]",
+    "explanation": "Network protocols send multi-byte integers in big-endian (network) byte order, not little-endian '<H'. Use '!H' (or '>H') so 0x0050 decodes to 80 instead of 0x5000 (20480)."
+  },
+  {
+    "id": "py-094",
+    "lang": "python",
+    "topic": "Bytes & encodings",
+    "kind": "bug",
+    "prompt": "Calling xor_first(b'AB', 0x20) raises TypeError on item assignment. Which line is wrong?",
+    "lines": [
+      "def xor_first(data, mask):",
+      "    buf = bytes(data)",
+      "    buf[0] ^= mask",
+      "    return bytes(buf)"
+    ],
+    "bugLine": 1,
+    "fixedLine": "    buf = bytearray(data)",
+    "explanation": "bytes objects are immutable, so mutating buf[0] raises TypeError. Wrap the input in bytearray(data) to modify bytes in place, then convert back to immutable bytes when done."
+  },
+  {
+    "id": "py-095",
+    "lang": "python",
+    "topic": "Bytes & encodings",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import hashlib\na = hashlib.sha256(b'data')\nb = hashlib.sha512(b'data')\nprint(len(a.digest()), len(a.hexdigest()), len(b.digest()))",
+    "choices": [
+      "32 64 64",
+      "64 64 128",
+      "256 64 512",
+      "32 32 64"
+    ],
+    "answer": 0,
+    "explanation": "digest() returns raw bytes (256 / 8 = 32 for SHA-256, 512 / 8 = 64 for SHA-512). hexdigest() encodes each byte as two hex characters, so SHA-256 hex is 64 characters long."
+  },
+  {
+    "id": "py-096",
+    "lang": "python",
+    "topic": "Bytes & encodings",
+    "kind": "order",
+    "prompt": "Put the lines in order so this XORs two byte strings and prints b'ab'.",
+    "lines": [
+      "def xor_bytes(a, b):",
+      "    out = bytearray()",
+      "    for x, y in zip(a, b):",
+      "        out.append(x ^ y)",
+      "    return bytes(out)",
+      "print(xor_bytes(b'AB', b'\\x20\\x20'))"
+    ],
+    "explanation": "zip(a, b) yields pairs of integer byte values that can be XORed directly with ^ and appended to a bytearray. XORing ASCII uppercase letters with 0x20 flips them to lowercase.",
+    "expectOutput": "b'ab'"
+  },
+  {
+    "id": "py-097",
+    "lang": "python",
+    "topic": "Logs & network data",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import re\nline = 'Failed password for root from 10.0.0.5 port 51234'\npat = r'for (?P<user>\\w+) from (?P<ip>[\\d.]+)'\nm = re.search(pat, line)\nprint(m.groupdict())",
+    "choices": [
+      "{'user': 'root', 'ip': '10.0.0.5'}",
+      "('root', '10.0.0.5')",
+      "None",
+      "{'user': 'root', 'ip': '10'}"
+    ],
+    "answer": 0,
+    "explanation": "Named capture groups (?P<name>...) let m.groupdict() return a dictionary keyed by field name instead of fragile numeric indexes. re.search() finds the pattern anywhere inside the auth-log line."
+  },
+  {
+    "id": "py-098",
+    "lang": "python",
+    "topic": "Logs & network data",
+    "kind": "bug",
+    "prompt": "extract_ip('Failed for root from 10.0.0.5') returns None instead of '10.0.0.5'. Which line is wrong?",
+    "lines": [
+      "def extract_ip(line):",
+      "    pat = r'from (?P<ip>[\\d.]+)'",
+      "    m = re.match(pat, line)",
+      "    return m.group('ip') if m else None"
+    ],
+    "bugLine": 2,
+    "fixedLine": "    m = re.search(pat, line)",
+    "explanation": "re.match() only checks for a match at the very start of the string, so 'from ...' mid-line never matches. Use re.search() to extract fields anywhere in a log record."
+  },
+  {
+    "id": "py-099",
+    "lang": "python",
+    "topic": "Logs & network data",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "from collections import Counter\nlogs = [\n    ('10.0.0.1', 'FAIL'), ('10.0.0.2', 'OK'),\n    ('10.0.0.1', 'FAIL'), ('10.0.0.3', 'FAIL'),\n]\nfails = Counter(ip for ip, st in logs if st == 'FAIL')\nprint(fails.most_common(1))",
+    "choices": [
+      "[('10.0.0.1', 2)]",
+      "('10.0.0.1', 2)",
+      "{'10.0.0.1': 2}",
+      "[('10.0.0.1', 2), ('10.0.0.3', 1)]"
+    ],
+    "answer": 0,
+    "explanation": "Filtering inside Counter(...) tallies only failed logins per IP, skipping the OK event. most_common(1) always returns a list of (item, count) tuples, even when requesting just the top entry."
+  },
+  {
+    "id": "py-100",
+    "lang": "python",
+    "topic": "Logs & network data",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import ipaddress\nnet = ipaddress.ip_network('10.0.1.0/24')\nip = ipaddress.ip_address('10.0.1.42')\nprint(ip in net, net.num_addresses)",
+    "choices": [
+      "True 256",
+      "True 254",
+      "False 256",
+      "True 255"
+    ],
+    "answer": 0,
+    "explanation": "ip in net tests CIDR membership when ip is an IPAddress object. num_addresses counts all 2^(32-24) = 256 addresses in the /24 block, including the network and broadcast addresses."
+  },
+  {
+    "id": "py-101",
+    "lang": "python",
+    "topic": "Logs & network data",
+    "kind": "bug",
+    "prompt": "is_blocked('198.51.100.9') silently returns False for every IP string. Which line is wrong?",
+    "lines": [
+      "def is_blocked(ip_str):",
+      "    block = ipaddress.ip_network('198.51.100.0/24')",
+      "    return ip_str in block"
+    ],
+    "bugLine": 2,
+    "fixedLine": "    return ipaddress.ip_address(ip_str) in block",
+    "explanation": "Testing a plain str with 'in' against an IPNetwork always returns False without raising an error, silently bypassing blocklists. Parse the string with ipaddress.ip_address(ip_str) first."
+  },
+  {
+    "id": "py-102",
+    "lang": "python",
+    "topic": "Logs & network data",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "from urllib.parse import urlparse, parse_qs\nurl = 'https://api.test:8443/v1/auth?role=user&role=admin'\nu = urlparse(url)\nqs = parse_qs(u.query)\nprint(u.hostname, u.port, qs['role'])",
+    "choices": [
+      "api.test 8443 ['user', 'admin']",
+      "api.test:8443 8443 ['user', 'admin']",
+      "api.test 8443 admin",
+      "api.test 8443 user"
+    ],
+    "answer": 0,
+    "explanation": "urlparse separates hostname (without port) and port (as an int) from netloc. parse_qs maps every query parameter to a list of values, which makes duplicate-parameter attacks immediately visible."
+  },
+  {
+    "id": "py-103",
+    "lang": "python",
+    "topic": "Logs & network data",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "resp = 'HTTP/1.1 200 OK\\r\\nHost: a\\r\\nX-Id: 7\\r\\n\\r\\nok'\nhead, body = resp.split('\\r\\n\\r\\n', 1)\nstatus, *hdrs = head.split('\\r\\n')\nprint(status.split()[1], len(hdrs), body)",
+    "choices": [
+      "200 2 ok",
+      "200 3 ok",
+      "HTTP/1.1 2 ok",
+      "200 2 Host: a"
+    ],
+    "answer": 0,
+    "explanation": "HTTP separates headers from the body with a blank line (\\r\\n\\r\\n), and maxsplit=1 stops splitting at the first boundary. Unpacking status, *hdrs then isolates the status line from the 2 header lines."
+  },
+  {
+    "id": "py-104",
+    "lang": "python",
+    "topic": "Logs & network data",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import json\nraw = '{\"event\":\"login\",\"src\":{\"ip\":\"10.0.0.9\"},\"ok\":false}'\nrec = json.loads(raw)\nprint(rec['src']['ip'], rec['ok'], rec.get('user', 'anon'))",
+    "choices": [
+      "10.0.0.9 False anon",
+      "10.0.0.9 false anon",
+      "10.0.0.9 False None",
+      "KeyError"
+    ],
+    "answer": 0,
+    "explanation": "json.loads() parses a structured log line into nested Python dicts and converts JSON false to Python False. Using .get('user', 'anon') safely returns a default when optional log fields are missing."
+  },
+  {
+    "id": "py-105",
+    "lang": "python",
+    "topic": "Logs & network data",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import csv, io\ntext = 'ip,msg\\n10.0.0.1,\"denied, bad key\"'\nrows = list(csv.reader(io.StringIO(text)))\nprint(len(rows), len(rows[1]), rows[1][1])",
+    "choices": [
+      "2 2 denied, bad key",
+      "2 3 \"denied",
+      "1 2 denied, bad key",
+      "2 2 \"denied, bad key\""
+    ],
+    "answer": 0,
+    "explanation": "csv.reader parses an in-memory string via io.StringIO and keeps the header as row 0. Unlike str.split(','), it respects quoted fields so the comma inside 'denied, bad key' stays in one column with quotes stripped."
+  },
+  {
+    "id": "py-106",
+    "lang": "python",
+    "topic": "Logs & network data",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "from datetime import datetime, timedelta\nend = datetime.fromisoformat('2026-01-10T12:10:00+00:00')\nstart = end - timedelta(minutes=5)\nraw = ['2026-01-10T12:04:59+00:00',\n       '2026-01-10T12:05:00+00:00',\n       '2026-01-10T12:09:30+00:00']\nts = [datetime.fromisoformat(s) for s in raw]\nprint(sum(start <= t <= end for t in ts))",
+    "choices": [
+      "2",
+      "1",
+      "3",
+      "0"
+    ],
+    "answer": 0,
+    "explanation": "end - timedelta(minutes=5) sets start to 12:05:00 UTC. Comparing parsed datetime objects with start <= t <= end excludes 12:04:59 and matches both 12:05:00 and 12:09:30, returning 2."
+  },
+  {
+    "id": "py-107",
+    "lang": "python",
+    "topic": "Logs & network data",
+    "kind": "bug",
+    "prompt": "An HTTP body containing a blank line (\\r\\n\\r\\n) raises ValueError on unpacking. Which line is wrong?",
+    "lines": [
+      "def split_http(resp):",
+      "    if '\\r\\n\\r\\n' not in resp:",
+      "        raise ValueError('bad response')",
+      "    head, body = resp.split('\\r\\n\\r\\n')",
+      "    return head, body"
+    ],
+    "bugLine": 3,
+    "fixedLine": "    head, body = resp.split('\\r\\n\\r\\n', 1)",
+    "explanation": "Without maxsplit=1, split('\\r\\n\\r\\n') splits on blank lines inside the body too, producing more than two pieces and breaking unpacking. Pass 1 so only the header-body boundary is split."
+  },
+  {
+    "id": "py-108",
+    "lang": "python",
+    "topic": "Logs & network data",
+    "kind": "order",
+    "prompt": "Put the lines in order so this prints the IP with the highest total bytes (1.1.1.1).",
+    "lines": [
+      "def top_ip(flows):",
+      "    by_ip = {}",
+      "    for ip, n in flows:",
+      "        by_ip[ip] = by_ip.get(ip, 0) + n",
+      "    ranked = sorted(by_ip, key=by_ip.get, reverse=True)",
+      "    return ranked[0]",
+      "print(top_ip([('1.1.1.1', 4), ('8.8.8.8', 9), ('1.1.1.1', 8)]))"
+    ],
+    "explanation": "Sum bytes per IP into by_ip first, then sort the IP keys by their totals in descending order with key=by_ip.get and reverse=True. 1.1.1.1 totals 12 bytes, beating 8.8.8.8 at 9.",
+    "expectOutput": "1.1.1.1"
+  },
+  {
     "id": "py-058",
     "lang": "python",
     "topic": "CTF toolbox",

@@ -324,6 +324,9 @@ export default function HomePage() {
   const isProgressLoading = !hasLoaded || (loading && totalCount === 0);
   const isAllCaughtUp = hasLoaded && !loading && totalCount > 0 && unreadCount === 0;
   const GreetingIcon = clientTime ? clientTime.Icon : BoltIcon;
+  const focusRingClass = isDusk
+    ? 'focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 focus-visible:ring-offset-2 focus-visible:ring-offset-[#1E1B29]'
+    : 'focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2A2623] focus-visible:ring-offset-2 focus-visible:ring-offset-[#E5DFD3]';
 
   return (
     <div
@@ -378,15 +381,16 @@ export default function HomePage() {
               <Link
                 href="/solved"
                 aria-label={`Solved CTF labs${labsDone > 0 ? `, ${labsDone} of ${WRITEUPS.length} done` : ''}`}
-                className={`relative inline-flex items-center justify-center p-2.5 rounded-2xl text-xs font-bold border transition-all touch-manipulation cursor-pointer shadow-xs ${
+                className={`relative inline-flex items-center justify-center min-w-[40px] min-h-[40px] p-2.5 rounded-2xl text-xs font-bold border transition-all touch-manipulation cursor-pointer shadow-xs ${focusRingClass} ${
                   isDusk
                     ? 'bg-[#2A263A] text-[#EAE6F2] border-[#3E3852] hover:bg-[#353048]'
                     : 'bg-[#EDE8DF] text-[#2A2623] border-[#D2C9B8] hover:bg-[#E2DBD0]'
                 }`}
               >
-                <FlaskConical className="w-4 h-4" />
+                <FlaskConical aria-hidden="true" className="w-4 h-4" />
                 {labsDone > 0 && (
                   <span
+                    aria-hidden="true"
                     style={{ borderColor: isDusk ? '#1E1B29' : '#E5DFD3' }}
                     className={`absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-black flex items-center justify-center border-2 text-white ${
                       labsDone === WRITEUPS.length
@@ -405,7 +409,7 @@ export default function HomePage() {
                 onClick={toggleTheme}
                 whileTap={{ scale: 0.92 }}
                 whileHover={{ y: -1 }}
-                className={`px-3 py-1.5 rounded-2xl text-xs font-bold border transition-all touch-manipulation cursor-pointer shadow-xs ${
+                className={`inline-flex items-center justify-center min-h-[40px] px-3 py-1.5 rounded-2xl text-xs font-bold border transition-all touch-manipulation cursor-pointer shadow-xs ${focusRingClass} ${
                   isDusk
                     ? 'bg-[#2A263A] text-[#EAE6F2] border-[#3E3852] hover:bg-[#353048]'
                     : 'bg-[#EDE8DF] text-[#2A2623] border-[#D2C9B8] hover:bg-[#E2DBD0]'
@@ -430,14 +434,17 @@ export default function HomePage() {
                 disabled={refreshing}
                 whileTap={{ scale: 0.92 }}
                 whileHover={{ y: -1 }}
-                className={`p-2.5 rounded-2xl border shadow-xs transition-all touch-manipulation cursor-pointer ${
+                className={`inline-flex items-center justify-center min-w-[40px] min-h-[40px] p-2.5 rounded-2xl border shadow-xs transition-all touch-manipulation cursor-pointer ${focusRingClass} ${
                   isDusk
                     ? 'text-[#D8D2E7] hover:text-[#FAF7F2] bg-[#2A263A] hover:bg-[#353048] border-[#3E3852]'
                     : 'text-[#4A443E] hover:text-[#2A2623] bg-[#EDE8DF] hover:bg-[#E2DBD0] border-[#D2C9B8]'
                 }`}
                 aria-label="Refresh feed"
               >
-                <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin text-rose-500' : ''}`} />
+                <RefreshCw
+                  aria-hidden="true"
+                  className={`w-4 h-4 ${refreshing ? 'animate-spin text-rose-500' : ''}`}
+                />
               </motion.button>
             </div>
           </div>
@@ -588,9 +595,10 @@ export default function HomePage() {
                 key={tab.id}
                 type="button"
                 data-testid={`filter-${tab.id.toLowerCase()}`}
+                aria-pressed={isActive}
                 onClick={() => setActiveFilter(tab.id)}
                 whileTap={{ scale: 0.94 }}
-                className={`shrink-0 inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all touch-manipulation cursor-pointer ${
+                className={`shrink-0 inline-flex items-center justify-center gap-1.5 min-h-[40px] min-w-[40px] px-3.5 py-2 rounded-full text-xs font-bold transition-all touch-manipulation cursor-pointer ${focusRingClass} ${
                   isActive
                     ? isDusk
                       ? 'bg-[#F0ECF8] text-[#1E1B29] shadow-sm border border-[#F0ECF8]'
@@ -626,13 +634,13 @@ export default function HomePage() {
                 type="button"
                 data-testid="btn-mark-all-read"
                 onClick={handleMarkAllRead}
-                className={`flex items-center gap-1 text-xs font-semibold transition-colors active:scale-95 touch-manipulation cursor-pointer ${
+                className={`inline-flex items-center gap-1 rounded-lg px-2 py-1.5 -mr-2 text-xs font-semibold transition-colors active:scale-95 touch-manipulation cursor-pointer ${focusRingClass} ${
                   isDusk
                     ? 'text-rose-400 hover:text-rose-300'
                     : 'text-rose-700 hover:text-rose-900'
                 }`}
               >
-                <CheckCheck className="w-3.5 h-3.5" />
+                <CheckCheck aria-hidden="true" className="w-3.5 h-3.5" />
                 <span>Mark all read</span>
               </button>
             </div>
@@ -651,7 +659,7 @@ export default function HomePage() {
             <button
               type="button"
               onClick={() => loadNews()}
-              className="px-3.5 py-1.5 rounded-xl bg-rose-600 text-white text-xs font-bold shadow-xs hover:bg-rose-700 transition-colors cursor-pointer"
+              className={`inline-flex items-center justify-center min-h-[40px] px-4 py-2 rounded-xl bg-rose-600 text-white text-xs font-bold shadow-xs hover:bg-rose-700 transition-colors cursor-pointer ${focusRingClass}`}
             >
               Retry
             </button>
@@ -817,9 +825,11 @@ export default function HomePage() {
             <motion.button
               type="button"
               data-testid="read-items-divider"
+              aria-expanded={readDrawerOpen}
+              aria-controls="read-items-drawer"
               onClick={() => setReadDrawerOpen((prev) => !prev)}
               whileTap={{ scale: 0.98 }}
-              className={`w-full flex items-center justify-between p-3.5 rounded-2xl border transition-all font-bold text-xs touch-manipulation cursor-pointer shadow-xs ${
+              className={`w-full flex items-center justify-between p-3.5 rounded-2xl border transition-all font-bold text-xs touch-manipulation cursor-pointer shadow-xs ${focusRingClass} ${
                 isDusk
                   ? 'bg-[#2A263A] hover:bg-[#353048] border-[#3E3852] text-[#F0ECF8]'
                   : 'bg-[#EDE8DF] hover:bg-[#E2DBD0] border-[#D2C9B8] text-[#2A2623]'
@@ -827,6 +837,7 @@ export default function HomePage() {
             >
               <div className="flex items-center gap-2">
                 <span
+                  aria-hidden="true"
                   className={`w-5 h-5 rounded-full flex items-center justify-center ${
                     isDusk
                       ? 'bg-emerald-950/70 text-emerald-300'
@@ -844,6 +855,7 @@ export default function HomePage() {
               >
                 {readDrawerOpen ? 'Hide' : 'Tap to expand'}
                 <ChevronDown
+                  aria-hidden="true"
                   className={`w-3.5 h-3.5 transition-transform duration-200 ${
                     readDrawerOpen ? 'rotate-180' : ''
                   }`}
@@ -856,6 +868,7 @@ export default function HomePage() {
               {readDrawerOpen && (
                 <motion.div
                   key="read-drawer-content"
+                  id="read-items-drawer"
                   data-testid="read-items-drawer"
                   initial={{ opacity: 0, height: 0 }}
                   animate={{ opacity: 1, height: 'auto' }}
@@ -863,40 +876,42 @@ export default function HomePage() {
                   transition={{ duration: 0.28, ease: 'easeInOut' }}
                   className="space-y-3.5 pt-3 overflow-hidden"
                 >
-                  {readGroups.flatMap((group, groupIdx) => [
-                    <motion.div
-                      key={`read-header-${group.key}`}
-                      layout
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      transition={{ duration: 0.2 }}
-                      className={groupIdx > 0 ? 'pt-2.5' : undefined}
-                    >
-                      <FeedSectionHeader
-                        group={group}
-                        isDusk={isDusk}
-                        testIdPrefix="read"
-                      />
-                    </motion.div>,
-                    ...group.items.map((item) => (
+                  <AnimatePresence mode="popLayout">
+                    {readGroups.flatMap((group, groupIdx) => [
                       <motion.div
-                        key={item.id}
+                        key={`read-header-${group.key}`}
                         layout
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, scale: 0.96 }}
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
                         transition={{ duration: 0.2 }}
+                        className={groupIdx > 0 ? 'pt-2.5' : undefined}
                       >
-                        <NewsCard
-                          item={item}
-                          onToggleBookmark={handleToggleBookmark}
-                          onToggleRead={handleToggleRead}
-                          theme={theme}
+                        <FeedSectionHeader
+                          group={group}
+                          isDusk={isDusk}
+                          testIdPrefix="read"
                         />
-                      </motion.div>
-                    )),
-                  ])}
+                      </motion.div>,
+                      ...group.items.map((item) => (
+                        <motion.div
+                          key={item.id}
+                          layout
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, scale: 0.96 }}
+                          transition={{ duration: 0.2 }}
+                        >
+                          <NewsCard
+                            item={item}
+                            onToggleBookmark={handleToggleBookmark}
+                            onToggleRead={handleToggleRead}
+                            theme={theme}
+                          />
+                        </motion.div>
+                      )),
+                    ])}
+                  </AnimatePresence>
                 </motion.div>
               )}
             </AnimatePresence>

@@ -19,12 +19,12 @@ function SyncPill({ status, pending, isDusk }: { status: SyncStatus; pending: nu
   if (status === 'idle') return null;
   const view =
     status === 'syncing'
-      ? { icon: <Cloud className="w-3.5 h-3.5 animate-pulse" />, text: 'Syncing…' }
+      ? { icon: <Cloud className="w-3.5 h-3.5 animate-pulse" aria-hidden="true" />, text: 'Syncing…' }
       : status === 'synced'
-      ? { icon: <Cloud className="w-3.5 h-3.5" />, text: 'Synced' }
+      ? { icon: <Cloud className="w-3.5 h-3.5" aria-hidden="true" />, text: 'Synced' }
       : status === 'local-only'
-      ? { icon: <HardDrive className="w-3.5 h-3.5" />, text: 'This device only' }
-      : { icon: <CloudOff className="w-3.5 h-3.5" />, text: pending > 0 ? `Offline · ${pending} to sync` : 'Offline' };
+      ? { icon: <HardDrive className="w-3.5 h-3.5" aria-hidden="true" />, text: 'This device only' }
+      : { icon: <CloudOff className="w-3.5 h-3.5" aria-hidden="true" />, text: pending > 0 ? `Offline · ${pending} to sync` : 'Offline' };
   return (
     <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[10px] font-bold ${p.chipIdle}`}>
       {view.icon}
@@ -35,15 +35,15 @@ function SyncPill({ status, pending, isDusk }: { status: SyncStatus; pending: nu
 
 function Stepper({ value, min, max, onChange, isDusk, label }: { value: number; min: number; max: number; onChange: (v: number) => void; isDusk: boolean; label: string }) {
   const p = palette(isDusk);
-  const btn = `w-11 h-11 rounded-xl border flex items-center justify-center touch-manipulation disabled:opacity-40 ${p.chipIdle}`;
+  const btn = `w-11 h-11 rounded-xl border flex items-center justify-center touch-manipulation disabled:opacity-40 ${p.chipIdle} ${p.focusRing}`;
   return (
     <div className="flex items-center gap-2" role="group" aria-label={label}>
       <button type="button" className={btn} onClick={() => onChange(value - 1)} disabled={value <= min} aria-label={`Fewer: ${label}`}>
-        <Minus className="w-4 h-4" />
+        <Minus className="w-4 h-4" aria-hidden="true" />
       </button>
       <span className={`w-6 text-center text-sm font-black tabular-nums ${p.strong}`}>{value}</span>
       <button type="button" className={btn} onClick={() => onChange(value + 1)} disabled={value >= max} aria-label={`More: ${label}`}>
-        <Plus className="w-4 h-4" />
+        <Plus className="w-4 h-4" aria-hidden="true" />
       </button>
     </div>
   );
@@ -118,7 +118,7 @@ export default function PracticePage() {
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-amber-500 via-rose-500 to-violet-600 flex items-center justify-center text-white shadow-md shadow-rose-500/20">
-                <GraduationCap className="w-5 h-5" />
+                <GraduationCap className="w-5 h-5" aria-hidden="true" />
               </div>
               <div>
                 <h1 className={`text-2xl font-black tracking-tight leading-tight ${p.strong}`}>Practice</h1>
@@ -174,7 +174,7 @@ export default function PracticePage() {
                     type="button"
                     onClick={() => setSizeIdx(i)}
                     aria-pressed={i === sizeIdx}
-                    className={`min-h-[48px] rounded-2xl border text-sm font-black touch-manipulation transition-colors ${i === sizeIdx ? p.chipActive : p.chipIdle}`}
+                    className={`min-h-[48px] rounded-2xl border text-sm font-black touch-manipulation transition-colors ${p.focusRing} ${i === sizeIdx ? p.chipActive : p.chipIdle}`}
                   >
                     {s.label}
                   </button>
@@ -185,14 +185,14 @@ export default function PracticePage() {
             {multiLang && (
               <div>
                 <div className={`text-[11px] font-bold uppercase tracking-wider mb-2 ${p.muted}`}>Languages</div>
-                <div className="flex gap-2 overflow-x-auto no-scrollbar -mx-1 px-1">
+                <div className="flex gap-2 overflow-x-auto no-scrollbar -mx-1 px-1 py-1 -my-1">
                   {modes.map((m) => (
                     <button
                       key={m.id}
                       type="button"
                       onClick={() => setMode(m.id)}
                       aria-pressed={m.id === mode}
-                      className={`shrink-0 px-3.5 min-h-[40px] rounded-full border text-xs font-bold touch-manipulation transition-colors ${m.id === mode ? p.chipActive : p.chipIdle}`}
+                      className={`shrink-0 px-3.5 min-h-[44px] rounded-full border text-xs font-bold touch-manipulation transition-colors ${p.focusRing} ${m.id === mode ? p.chipActive : p.chipIdle}`}
                     >
                       {m.label}
                     </button>
@@ -206,7 +206,7 @@ export default function PracticePage() {
               whileTap={preview.total > 0 ? { scale: 0.97 } : undefined}
               disabled={!ready || preview.total === 0}
               onClick={() => start(size.minutes, mode)}
-              className="w-full min-h-[56px] rounded-2xl text-sm font-black text-white bg-gradient-to-tr from-amber-500 via-rose-500 to-violet-600 shadow-md shadow-rose-500/20 touch-manipulation disabled:opacity-50"
+              className={`w-full min-h-[56px] rounded-2xl text-sm font-black text-white bg-gradient-to-tr from-amber-500 via-rose-500 to-violet-600 shadow-md shadow-rose-500/20 touch-manipulation disabled:opacity-50 ${p.focusRing}`}
             >
               {!ready
                 ? 'Loading…'
@@ -264,13 +264,13 @@ export default function PracticePage() {
               type="button"
               onClick={() => setShowSettings((v) => !v)}
               aria-expanded={showSettings}
-              className="w-full flex items-center justify-between p-4 min-h-[48px] touch-manipulation"
+              className={`w-full flex items-center justify-between p-4 min-h-[48px] rounded-2xl touch-manipulation ${p.focusRingInset}`}
             >
               <span className={`text-sm font-bold flex items-center gap-2 ${p.strong}`}>
-                <Settings2 className="w-4 h-4" />
+                <Settings2 className="w-4 h-4" aria-hidden="true" />
                 Settings
               </span>
-              <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${showSettings ? 'rotate-180' : ''} ${p.muted}`} />
+              <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${showSettings ? 'rotate-180' : ''} ${p.muted}`} aria-hidden="true" />
             </button>
             <AnimatePresence initial={false}>
               {showSettings && (
@@ -295,7 +295,7 @@ export default function PracticePage() {
                               type="button"
                               onClick={() => update({ weights: preset.weights })}
                               aria-pressed={preset.id === presetId}
-                              className={`px-3.5 min-h-[40px] rounded-full border text-xs font-bold touch-manipulation ${preset.id === presetId ? p.chipActive : p.chipIdle}`}
+                              className={`px-3.5 min-h-[44px] rounded-full border text-xs font-bold touch-manipulation ${p.focusRing} ${preset.id === presetId ? p.chipActive : p.chipIdle}`}
                             >
                               {preset.label}
                             </button>

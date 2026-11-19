@@ -47,9 +47,9 @@ export default function TodayPracticeCard({ isDusk }: { isDusk: boolean }) {
       aria-label="Today's practice"
       className={`rounded-3xl p-4 border-2 ${isDusk ? 'bg-[#211d2e] border-[#3E3852]' : 'bg-[#efe9df] border-[#D2C9B8]'}`}
     >
-      <Link href="/practice" className="flex items-center gap-3 mb-3 touch-manipulation">
+      <Link href="/practice" className={`flex items-center gap-3 mb-3 min-h-[44px] rounded-2xl touch-manipulation ${p.focusRing}`}>
         <div className="w-10 h-10 shrink-0 rounded-2xl bg-gradient-to-tr from-amber-500 via-rose-500 to-violet-600 flex items-center justify-center text-white shadow-md shadow-rose-500/20">
-          <GraduationCap className="w-5 h-5" />
+          <GraduationCap className="w-5 h-5" aria-hidden="true" />
         </div>
         <div className="flex-1 min-w-0">
           <div className={`flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider ${p.muted}`}>
@@ -64,7 +64,7 @@ export default function TodayPracticeCard({ isDusk }: { isDusk: boolean }) {
           </div>
           <div className={`text-[15px] font-extrabold tracking-tight ${p.strong}`}>{headline}</div>
         </div>
-        <ChevronRight className={`w-5 h-5 shrink-0 ${p.muted}`} />
+        <ChevronRight className={`w-5 h-5 shrink-0 ${p.muted}`} aria-hidden="true" />
       </Link>
 
       <div className="flex items-center gap-3">
@@ -77,7 +77,7 @@ export default function TodayPracticeCard({ isDusk }: { isDusk: boolean }) {
         {!nothingToDo && (
           <Link
             href={`/practice?start=${quick}`}
-            className="shrink-0 inline-flex items-center justify-center px-4 min-h-[44px] rounded-2xl text-xs font-black text-white bg-gradient-to-tr from-amber-500 via-rose-500 to-violet-600 shadow-md shadow-rose-500/20 touch-manipulation active:scale-95 transition-transform"
+            className={`shrink-0 inline-flex items-center justify-center px-4 min-h-[44px] rounded-2xl text-xs font-black text-white bg-gradient-to-tr from-amber-500 via-rose-500 to-violet-600 shadow-md shadow-rose-500/20 touch-manipulation active:scale-95 transition-transform ${p.focusRing}`}
           >
             {stats.practicedToday ? '+2 min' : 'Start 5 min'}
           </Link>

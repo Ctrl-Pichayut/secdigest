@@ -11,6 +11,9 @@ import { CIcon, JavaIcon, JsIcon, PythonIcon, type IconComponent } from '@/compo
  * themes (like the lab terminals); everything else follows paper/dusk.
  */
 
+export const CODE_FOCUS_RING =
+  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-rose-400';
+
 export function palette(isDusk: boolean) {
   return {
     page: isDusk ? 'bg-[#1E1B29] text-[#EAE6F2]' : 'bg-[#E5DFD3] text-[#2A2623]',
@@ -27,6 +30,12 @@ export function palette(isDusk: boolean) {
     chipActive: isDusk ? 'bg-[#F0ECF8] text-[#1E1B29] border-[#F0ECF8]' : 'bg-[#2A2623] text-[#FAF7F2] border-[#2A2623]',
     good: isDusk ? 'bg-emerald-950/60 border-emerald-600/70 text-emerald-100' : 'bg-emerald-100 border-emerald-400 text-emerald-950',
     bad: isDusk ? 'bg-rose-950/60 border-rose-600/70 text-rose-100' : 'bg-rose-100 border-rose-400 text-rose-950',
+    focusRing: isDusk
+      ? 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#1E1B29]'
+      : 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-600 focus-visible:ring-offset-2 focus-visible:ring-offset-[#E5DFD3]',
+    focusRingInset: isDusk
+      ? 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-rose-400'
+      : 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-rose-600',
   };
 }
 
@@ -81,6 +90,7 @@ export function ChoiceButton({
   isDusk,
   mono = true,
   footer,
+  keyShortcut,
 }: {
   children: React.ReactNode;
   state: ChoiceState;
@@ -89,6 +99,7 @@ export function ChoiceButton({
   isDusk: boolean;
   mono?: boolean;
   footer?: React.ReactNode;
+  keyShortcut?: string;
 }) {
   const p = palette(isDusk);
   const tone =
@@ -104,17 +115,18 @@ export function ChoiceButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
+      aria-keyshortcuts={keyShortcut}
       whileTap={disabled ? undefined : { scale: 0.98 }}
       animate={state === 'wrong' ? { x: [0, -6, 6, -4, 4, 0] } : { x: 0 }}
       transition={{ duration: 0.35 }}
-      className={`w-full text-left rounded-2xl border px-3.5 py-3 min-h-[48px] touch-manipulation transition-colors disabled:cursor-default ${tone}`}
+      className={`w-full text-left rounded-2xl border px-3.5 py-3 min-h-[48px] touch-manipulation transition-colors disabled:cursor-default ${p.focusRing} ${tone}`}
     >
       <div className="flex items-start gap-2.5">
         <div className={`flex-1 min-w-0 ${mono ? 'font-mono text-[12px] whitespace-pre-wrap break-words' : 'text-sm font-semibold'}`}>
           {children}
         </div>
-        {state === 'correct' && <Check className="w-4 h-4 shrink-0 mt-0.5" />}
-        {state === 'wrong' && <X className="w-4 h-4 shrink-0 mt-0.5" />}
+        {state === 'correct' && <Check className="w-4 h-4 shrink-0 mt-0.5" aria-hidden="true" />}
+        {state === 'wrong' && <X className="w-4 h-4 shrink-0 mt-0.5" aria-hidden="true" />}
       </div>
       {footer}
     </motion.button>
@@ -123,8 +135,16 @@ export function ChoiceButton({
 
 /** Segmented progress bar (weekly goal). */
 export function GoalBar({ done, goal, isDusk }: { done: number; goal: number; isDusk: boolean }) {
+  const clamped = Math.min(done, goal);
   return (
-    <div className="flex gap-1.5" aria-label={`${Math.min(done, goal)} of ${goal} sessions this week`}>
+    <div
+      className="flex gap-1.5"
+      role="progressbar"
+      aria-valuenow={clamped}
+      aria-valuemin={0}
+      aria-valuemax={goal}
+      aria-label={`${clamped} of ${goal} sessions this week`}
+    >
       {Array.from({ length: goal }, (_, i) => (
         <div key={i} className={`flex-1 h-2 rounded-full overflow-hidden border ${palette(isDusk).track}`}>
           <motion.div

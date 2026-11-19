@@ -60,7 +60,7 @@ function CardReadOnlyBody({ card, isDusk }: { card: PracticeCard; isDusk: boolea
           <CodeBlock code={card.code} />
           <div className={`rounded-xl p-3 border ${p.good}`}>
             <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider mb-1">
-              <Check className="w-3.5 h-3.5 shrink-0" />
+              <Check className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
               <span>Correct answer</span>
             </div>
             <div className="font-mono text-[12px] whitespace-pre-wrap break-words">
@@ -79,7 +79,7 @@ function CardReadOnlyBody({ card, isDusk }: { card: PracticeCard; isDusk: boolea
           <CodeBlock code={numberedCode} />
           <div className={`rounded-xl p-3 border ${p.good}`}>
             <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider mb-1">
-              <Check className="w-3.5 h-3.5 shrink-0" />
+              <Check className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
               <span>Bug on line {card.bugLine + 1}</span>
             </div>
             <div className="font-mono text-[12px] whitespace-pre-wrap break-words">
@@ -99,7 +99,7 @@ function CardReadOnlyBody({ card, isDusk }: { card: PracticeCard; isDusk: boolea
       return (
         <div className="space-y-1.5">
           <div className={`flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider ${p.muted}`}>
-            <Check className="w-3.5 h-3.5 shrink-0" />
+            <Check className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
             <span>Correct order</span>
           </div>
           <CodeBlock code={card.lines.join('\n')} />
@@ -110,7 +110,7 @@ function CardReadOnlyBody({ card, isDusk }: { card: PracticeCard; isDusk: boolea
       return (
         <div className="space-y-1.5">
           <div className={`flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider ${p.muted}`}>
-            <Check className="w-3.5 h-3.5 shrink-0" />
+            <Check className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
             <span>Correct answer</span>
           </div>
           <CodeBlock code={correctChoice?.code ?? ''} />
@@ -145,10 +145,10 @@ export default function MissedCardsPanel({
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        className="w-full flex items-center justify-between gap-2 p-4 min-h-[48px] touch-manipulation"
+        className={`w-full flex items-center justify-between gap-2 p-4 min-h-[48px] rounded-2xl touch-manipulation ${p.focusRingInset}`}
       >
         <span className={`text-sm font-bold flex items-center gap-2 ${p.strong}`}>
-          <RotateCcw className="w-4 h-4 shrink-0" />
+          <RotateCcw className="w-4 h-4 shrink-0" aria-hidden="true" />
           <span>Cards to revisit</span>
           {ready && missed.length > 0 && (
             <span className={`px-2 py-0.5 rounded-full border text-[10px] font-bold tabular-nums ${p.chipIdle}`}>
@@ -156,7 +156,7 @@ export default function MissedCardsPanel({
             </span>
           )}
         </span>
-        <ChevronDown className={`w-4 h-4 shrink-0 transition-transform duration-200 ${open ? 'rotate-180' : ''} ${p.muted}`} />
+        <ChevronDown className={`w-4 h-4 shrink-0 transition-transform duration-200 ${open ? 'rotate-180' : ''} ${p.muted}`} aria-hidden="true" />
       </button>
 
       <AnimatePresence initial={false}>
@@ -180,9 +180,9 @@ export default function MissedCardsPanel({
                     type="button"
                     whileTap={{ scale: 0.97 }}
                     onClick={() => onPractice(missed.map((entry) => entry.card.id))}
-                    className="w-full min-h-[48px] rounded-2xl text-sm font-black text-white bg-gradient-to-tr from-amber-500 via-rose-500 to-violet-600 shadow-md shadow-rose-500/20 touch-manipulation inline-flex items-center justify-center gap-2"
+                    className={`w-full min-h-[48px] rounded-2xl text-sm font-black text-white bg-gradient-to-tr from-amber-500 via-rose-500 to-violet-600 shadow-md shadow-rose-500/20 touch-manipulation inline-flex items-center justify-center gap-2 ${p.focusRing}`}
                   >
-                    <Play className="w-4 h-4 shrink-0" />
+                    <Play className="w-4 h-4 shrink-0" aria-hidden="true" />
                     <span>Practice these</span>
                   </motion.button>
 
@@ -196,7 +196,7 @@ export default function MissedCardsPanel({
                             type="button"
                             onClick={() => setExpandedId(isExpanded ? null : card.id)}
                             aria-expanded={isExpanded}
-                            className="w-full text-left px-3.5 py-3 min-h-[52px] flex items-center gap-3 touch-manipulation"
+                            className={`w-full text-left px-3.5 py-3 min-h-[52px] rounded-2xl flex items-center gap-3 touch-manipulation ${p.focusRingInset}`}
                           >
                             <div className="flex-1 min-w-0 space-y-0.5">
                               <div className="flex items-center gap-2 flex-wrap">
@@ -218,6 +218,7 @@ export default function MissedCardsPanel({
                               </span>
                               <ChevronDown
                                 className={`w-4 h-4 shrink-0 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''} ${p.muted}`}
+                                aria-hidden="true"
                               />
                             </div>
                           </button>

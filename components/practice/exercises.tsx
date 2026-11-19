@@ -1,10 +1,10 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
-import { RotateCcw } from 'lucide-react';
+import { ChevronDown, ChevronUp, RotateCcw } from 'lucide-react';
 import type { BugCard, CompareCard, OrderCard, OutputCard, PracticeCard } from '@/lib/practice/types';
-import { ChoiceButton, CodeBlock, LangChip, palette, type ChoiceState } from './ui';
+import { ChoiceButton, CODE_FOCUS_RING, CodeBlock, LangChip, palette, type ChoiceState } from './ui';
 
 /**
  * The four tap-only exercise types. Each one owns its answer state and calls
@@ -45,12 +45,50 @@ function OutputExercise({ card, isDusk, onAnswered }: ExerciseProps<OutputCard>)
     setPicked(i);
     onAnswered(i === card.answer);
   };
+  const pickRef = useRef(pick);
+  useEffect(() => {
+    pickRef.current = pick;
+  });
+
+  useEffect(() => {
+    if (picked !== null) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      if (e.key >= '1' && e.key <= '4') {
+        const slot = Number(e.key) - 1;
+        if (slot < order.length) {
+          e.preventDefault();
+          pickRef.current(order[slot]);
+        }
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [order, picked]);
+
   return (
     <div className="space-y-3">
       <CodeBlock code={card.code} />
       <div className="space-y-2">
-        {order.map((i) => (
-          <ChoiceButton key={i} state={choiceState(i, picked, card.answer)} disabled={picked !== null} onClick={() => pick(i)} isDusk={isDusk}>
+        {order.map((i, slot) => (
+          <ChoiceButton
+            key={i}
+            state={choiceState(i, picked, card.answer)}
+            disabled={picked !== null}
+            onClick={() => pick(i)}
+            isDusk={isDusk}
+            keyShortcut={slot < 4 ? String(slot + 1) : undefined}
+          >
             {card.choices[i]}
           </ChoiceButton>
         ))}
@@ -126,10 +164,10 @@ function BugExercise({ card, isDusk, onAnswered }: ExerciseProps<BugCard>) {
                 onClick={() => pick(i)}
                 animate={revealed && i === picked && !isBug ? { x: [0, -5, 5, -3, 3, 0] } : { x: 0 }}
                 transition={{ duration: 0.35 }}
-                className={`w-full flex items-stretch text-left font-mono text-[12px] leading-relaxed min-h-[36px] touch-manipulation transition-colors disabled:cursor-default ${tone}`}
+                className={`w-full flex items-center text-left font-mono text-[12px] leading-relaxed min-h-[44px] touch-manipulation transition-colors disabled:cursor-default ${CODE_FOCUS_RING} ${tone}`}
               >
-                <span className="w-9 shrink-0 text-right pr-3 py-1.5 text-[#6f6a85] select-none">{i + 1}</span>
-                <span className="pr-4 py-1.5 whitespace-pre text-[#e4def2]">{line || ' '}</span>
+                <span className="w-9 shrink-0 text-right pr-3 py-2 text-[#6f6a85] select-none">{i + 1}</span>
+                <span className="pr-4 py-2 whitespace-pre text-[#e4def2]">{line || ' '}</span>
               </motion.button>
             );
           })}
@@ -161,6 +199,16 @@ function OrderExercise({ card, isDusk, onAnswered }: ExerciseProps<OrderCard>) {
     setBuilt((prev) => prev.filter((i) => i !== idx));
     setPool((prev) => [...prev, idx]);
   };
+  const moveBuilt = (pos: number, delta: -1 | 1) => {
+    if (locked) return;
+    const target = pos + delta;
+    setBuilt((prev) => {
+      if (target < 0 || target >= prev.length) return prev;
+      const next = [...prev];
+      [next[pos], next[target]] = [next[target], next[pos]];
+      return next;
+    });
+  };
   const clear = () => {
     if (locked) return;
     setPool((prev) => [...prev, ...built]);
@@ -176,30 +224,58 @@ function OrderExercise({ card, isDusk, onAnswered }: ExerciseProps<OrderCard>) {
   return (
     <div className="space-y-3">
       {/* The code being built */}
-      <div className="rounded-2xl border border-[#2b2838] bg-[#12101a] py-2 min-h-[96px] overflow-x-auto">
+      <div className="rounded-2xl border border-[#2b2838] bg-[#12101a] py-2 min-h-[96px] overflow-hidden">
         {built.length === 0 ? (
           <div className="px-4 py-6 text-center text-[12px] text-[#6f6a85]">Tap the lines below in order</div>
         ) : (
-          <div className="min-w-max">
+          <div>
             {built.map((idx, pos) => {
               const ok = sameLine(card, card.lines[idx], card.lines[pos]);
               const tone = !locked
-                ? 'hover:bg-white/5'
+                ? ''
                 : ok
                 ? 'bg-emerald-500/15 shadow-[inset_3px_0_0_#34d399]'
                 : 'bg-rose-500/15 shadow-[inset_3px_0_0_#fb7185]';
               return (
-                <motion.button
+                <motion.div
                   key={idx}
+                  layout
                   layoutId={`${card.id}-line-${idx}`}
-                  type="button"
-                  onClick={() => unplace(idx)}
-                  disabled={locked}
-                  className={`w-full flex text-left font-mono text-[12px] leading-relaxed min-h-[34px] touch-manipulation disabled:cursor-default ${tone}`}
+                  className={`w-full flex items-stretch min-h-[44px] transition-colors ${tone}`}
                 >
-                  <span className="w-9 shrink-0 text-right pr-3 py-1.5 text-[#6f6a85] select-none">{pos + 1}</span>
-                  <span className="pr-4 py-1.5 whitespace-pre text-[#e4def2]">{card.lines[idx] || ' '}</span>
-                </motion.button>
+                  <button
+                    type="button"
+                    onClick={() => unplace(idx)}
+                    disabled={locked}
+                    aria-label={locked ? undefined : `Remove line ${pos + 1}: ${card.lines[idx].trim() || 'blank line'}`}
+                    className={`flex-1 min-w-0 flex items-center text-left font-mono text-[12px] leading-relaxed min-h-[44px] overflow-x-auto touch-manipulation transition-colors enabled:hover:bg-white/5 disabled:cursor-default ${CODE_FOCUS_RING}`}
+                  >
+                    <span className="w-9 shrink-0 text-right pr-3 py-2 text-[#6f6a85] select-none">{pos + 1}</span>
+                    <span className="pr-3 py-2 whitespace-pre text-[#e4def2]">{card.lines[idx] || ' '}</span>
+                  </button>
+                  {!locked && (
+                    <div className="shrink-0 flex items-center border-l border-[#2b2838]">
+                      <button
+                        type="button"
+                        onClick={() => moveBuilt(pos, -1)}
+                        disabled={pos === 0}
+                        aria-label={`Move line ${pos + 1} up`}
+                        className={`w-11 h-11 shrink-0 flex items-center justify-center text-[#9d96b3] enabled:hover:text-[#e4def2] enabled:hover:bg-white/10 enabled:active:bg-white/15 disabled:opacity-30 disabled:cursor-default touch-manipulation transition-colors ${CODE_FOCUS_RING}`}
+                      >
+                        <ChevronUp className="w-4 h-4" aria-hidden="true" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => moveBuilt(pos, 1)}
+                        disabled={pos === built.length - 1}
+                        aria-label={`Move line ${pos + 1} down`}
+                        className={`w-11 h-11 shrink-0 flex items-center justify-center text-[#9d96b3] enabled:hover:text-[#e4def2] enabled:hover:bg-white/10 enabled:active:bg-white/15 disabled:opacity-30 disabled:cursor-default touch-manipulation transition-colors ${CODE_FOCUS_RING}`}
+                      >
+                        <ChevronDown className="w-4 h-4" aria-hidden="true" />
+                      </button>
+                    </div>
+                  )}
+                </motion.div>
               );
             })}
           </div>
@@ -216,7 +292,7 @@ function OrderExercise({ card, isDusk, onAnswered }: ExerciseProps<OrderCard>) {
               type="button"
               onClick={() => place(idx)}
               whileTap={{ scale: 0.98 }}
-              className={`w-full text-left rounded-xl border px-3 py-2.5 min-h-[44px] font-mono text-[12px] whitespace-pre overflow-x-auto touch-manipulation ${p.panel} ${p.strong}`}
+              className={`w-full text-left rounded-xl border px-3 py-2.5 min-h-[44px] font-mono text-[12px] whitespace-pre overflow-x-auto touch-manipulation ${p.panel} ${p.strong} ${p.focusRing}`}
             >
               {card.lines[idx]}
             </motion.button>
@@ -230,9 +306,9 @@ function OrderExercise({ card, isDusk, onAnswered }: ExerciseProps<OrderCard>) {
             type="button"
             onClick={clear}
             disabled={built.length === 0}
-            className={`inline-flex items-center gap-1.5 px-3.5 min-h-[44px] rounded-xl border text-xs font-bold touch-manipulation disabled:opacity-40 ${p.chipIdle}`}
+            className={`inline-flex items-center gap-1.5 px-3.5 min-h-[44px] rounded-xl border text-xs font-bold touch-manipulation disabled:opacity-40 ${p.chipIdle} ${p.focusRing}`}
           >
-            <RotateCcw className="w-3.5 h-3.5" />
+            <RotateCcw className="w-3.5 h-3.5" aria-hidden="true" />
             Clear
           </button>
           <motion.button
@@ -240,7 +316,7 @@ function OrderExercise({ card, isDusk, onAnswered }: ExerciseProps<OrderCard>) {
             onClick={check}
             disabled={pool.length > 0}
             whileTap={pool.length > 0 ? undefined : { scale: 0.97 }}
-            className="flex-1 min-h-[44px] rounded-xl text-xs font-bold text-white bg-gradient-to-tr from-amber-500 via-rose-500 to-violet-600 shadow-md shadow-rose-500/20 touch-manipulation disabled:opacity-40"
+            className={`flex-1 min-h-[44px] rounded-xl text-xs font-bold text-white bg-gradient-to-tr from-amber-500 via-rose-500 to-violet-600 shadow-md shadow-rose-500/20 touch-manipulation disabled:opacity-40 ${p.focusRing}`}
           >
             {pool.length > 0 ? `${pool.length} line${pool.length === 1 ? '' : 's'} left` : 'Check'}
           </motion.button>

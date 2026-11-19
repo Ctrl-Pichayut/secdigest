@@ -1,7 +1,15 @@
 'use client';
 
-import React, { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import React, { useEffect, useRef, useState } from 'react';
+import {
+  motion,
+  AnimatePresence,
+  useMotionValue,
+  useTransform,
+  useDragControls,
+  useReducedMotion,
+  animate,
+} from 'framer-motion';
 import { ExternalLink, Bookmark, CheckCircle2 } from 'lucide-react';
 import { NewsItem } from '@/lib/types';
 import {
@@ -15,6 +23,24 @@ import {
   TrophyIcon,
   type IconComponent,
 } from '@/components/icons';
+
+const SWIPE_THRESHOLD_RATIO = 0.35;
+const SWIPE_MAX_DRAG_PX = 240;
+
+function hasTextSelectionIn(container: HTMLElement | null): boolean {
+  if (typeof window === 'undefined' || typeof window.getSelection !== 'function') {
+    return false;
+  }
+  const selection = window.getSelection();
+  if (!selection || selection.toString().trim().length === 0) {
+    return false;
+  }
+  if (!container) return true;
+  return (
+    (selection.anchorNode !== null && container.contains(selection.anchorNode)) ||
+    (selection.focusNode !== null && container.contains(selection.focusNode))
+  );
+}
 
 interface NewsCardProps {
   item: NewsItem;
@@ -62,6 +88,112 @@ export default function NewsCard({
   const isBreaking = Boolean(item.is_breaking);
 
   const isDusk = theme === 'dusk';
+
+  const containerRef = useRef<HTMLDivElement>(null);
+  const isDraggingRef = useRef(false);
+  const isCommittingRef = useRef(false);
+
+  const dragControls = useDragControls();
+  const shouldReduceMotion = useReducedMotion();
+  const x = useMotionValue(0);
+
+  // Background action hints stay invisible at rest (x = 0) and fade in while dragging
+  const leftSwipeHintOpacity = useTransform(x, [-110, -24, -4], [1, 0.55, 0]);
+  const leftSwipeIconScale = useTransform(x, [-130, -24], [1.05, 0.9]);
+  const rightSwipeHintOpacity = useTransform(x, [4, 24, 110], [0, 0.55, 1]);
+  const rightSwipeIconScale = useTransform(x, [24, 130], [0.9, 1.05]);
+
+  // Reset swipe state if read status changes while the card remains mounted
+  useEffect(() => {
+    isCommittingRef.current = false;
+    x.set(0);
+  }, [item.is_read, x]);
+
+  const snapBack = () => {
+    animate(
+      x,
+      0,
+      shouldReduceMotion
+        ? { duration: 0 }
+        : { type: 'spring', stiffness: 450, damping: 32 }
+    );
+  };
+
+  const handlePointerDown = (e: React.PointerEvent<HTMLElement>) => {
+    if (isCommittingRef.current) return;
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    if (e.detail > 1) return;
+
+    const target = e.target as HTMLElement | null;
+    if (target?.closest('button, a, input, textarea, select, [role="button"]')) {
+      return;
+    }
+    if (hasTextSelectionIn(containerRef.current)) {
+      return;
+    }
+
+    dragControls.start(e);
+  };
+
+  const handleDragStart = () => {
+    isDraggingRef.current = true;
+  };
+
+  const handleDragEnd = () => {
+    if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+      window.requestAnimationFrame(() => {
+        isDraggingRef.current = false;
+      });
+    } else {
+      isDraggingRef.current = false;
+    }
+
+    if (isCommittingRef.current) return;
+
+    if (hasTextSelectionIn(containerRef.current)) {
+      snapBack();
+      return;
+    }
+
+    const cardWidth = containerRef.current?.offsetWidth || 340;
+    const threshold = cardWidth * SWIPE_THRESHOLD_RATIO;
+    const offsetX = x.get();
+
+    if (offsetX <= -threshold) {
+      isCommittingRef.current = true;
+      // Toggle only after the slide-out finishes; toggling first re-renders the card
+      // (is_read effect resets x to 0) and makes it jump back mid-animation.
+      if (shouldReduceMotion) {
+        onToggleRead(item.id, item.is_read);
+      } else {
+        animate(x, -(cardWidth + 24), {
+          duration: 0.2,
+          ease: 'easeOut',
+          onComplete: () => onToggleRead(item.id, item.is_read),
+        });
+      }
+      return;
+    }
+
+    if (offsetX >= threshold) {
+      onToggleBookmark(item.id, item.is_bookmarked);
+      snapBack();
+      return;
+    }
+
+    snapBack();
+  };
+
+  const handleClickCapture = (e: React.MouseEvent<HTMLElement>) => {
+    if (isDraggingRef.current) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  };
+
+  const focusRingClass = isDusk
+    ? 'focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 focus-visible:ring-offset-2 focus-visible:ring-offset-[#1E1B29]'
+    : 'focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2A2623] focus-visible:ring-offset-2 focus-visible:ring-offset-[#E5DFD3]';
 
   // Category visual metadata per theme (Zero #FFFFFF, Zero #09090b)
   const categoryMeta: {
@@ -175,10 +307,77 @@ export default function NewsCard({
     : categoryMeta.cardBorder;
 
   return (
-    <article
-      data-testid={`news-card-${item.id}`}
-      className={`relative rounded-3xl p-5 shadow-sm border-2 transition-all duration-200 ${categoryMeta.cardBg} ${cardBorderClass}`}
+    <div
+      ref={containerRef}
+      className="relative rounded-3xl overflow-hidden shadow-sm"
     >
+      {/* Subtle swipe action hints revealed behind the card while dragging */}
+      <div
+        aria-hidden="true"
+        className="absolute inset-0 rounded-3xl pointer-events-none select-none"
+      >
+        {/* Left-side hint: revealed when swiping right (Save / Unsave) */}
+        <motion.div
+          style={{ opacity: rightSwipeHintOpacity }}
+          className={`absolute inset-0 rounded-3xl flex items-center justify-start pl-6 border-2 ${
+            isDusk
+              ? 'bg-amber-950/60 border-amber-800/50 text-amber-200'
+              : 'bg-amber-200/80 border-amber-300/90 text-amber-950'
+          }`}
+        >
+          <motion.div
+            style={shouldReduceMotion ? undefined : { scale: rightSwipeIconScale }}
+            className="flex items-center gap-2 text-xs font-bold tracking-wide"
+          >
+            <Bookmark
+              aria-hidden="true"
+              className={`w-4 h-4 shrink-0 ${
+                item.is_bookmarked
+                  ? isDusk
+                    ? 'fill-amber-300 text-amber-300'
+                    : 'fill-amber-800 text-amber-800'
+                  : ''
+              }`}
+            />
+            <span>{item.is_bookmarked ? 'Unsave' : 'Save'}</span>
+          </motion.div>
+        </motion.div>
+
+        {/* Right-side hint: revealed when swiping left (Read / Unread) */}
+        <motion.div
+          style={{ opacity: leftSwipeHintOpacity }}
+          className={`absolute inset-0 rounded-3xl flex items-center justify-end pr-6 border-2 ${
+            isDusk
+              ? 'bg-emerald-950/60 border-emerald-800/50 text-emerald-200'
+              : 'bg-emerald-200/80 border-emerald-300/90 text-emerald-950'
+          }`}
+        >
+          <motion.div
+            style={shouldReduceMotion ? undefined : { scale: leftSwipeIconScale }}
+            className="flex items-center gap-2 text-xs font-bold tracking-wide"
+          >
+            <span>{item.is_read ? 'Unread' : 'Read'}</span>
+            <CheckCircle2 aria-hidden="true" className="w-4 h-4 shrink-0" />
+          </motion.div>
+        </motion.div>
+      </div>
+
+      <motion.article
+        data-testid={`news-card-${item.id}`}
+        drag="x"
+        dragDirectionLock
+        dragListener={false}
+        dragControls={dragControls}
+        dragConstraints={{ left: -SWIPE_MAX_DRAG_PX, right: SWIPE_MAX_DRAG_PX }}
+        dragElastic={0.15}
+        dragMomentum={false}
+        style={{ x }}
+        onPointerDown={handlePointerDown}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+        onClickCapture={handleClickCapture}
+        className={`relative z-10 rounded-3xl p-5 border-2 transition-colors duration-200 touch-pan-y ${categoryMeta.cardBg} ${cardBorderClass}`}
+      >
       {/* Category, Breaking, Countdown & Language Top Bar (No duplicate top Saved badge) */}
       <div className="flex items-center justify-between gap-2 mb-3">
         <div className="flex items-center gap-1.5 flex-wrap">
@@ -230,7 +429,7 @@ export default function NewsCard({
               data-testid={`btn-lang-${item.id}`}
               onClick={() => setIsThai((prev) => !prev)}
               whileTap={{ scale: 0.92 }}
-              className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold border transition-all cursor-pointer ${
+              className={`inline-flex items-center justify-center gap-1 min-h-[40px] min-w-[40px] px-3 rounded-full text-xs font-bold border transition-all touch-manipulation cursor-pointer ${focusRingClass} ${
                 isThai
                   ? 'bg-rose-600 text-white border-rose-700 shadow-sm'
                   : isDusk
@@ -238,6 +437,7 @@ export default function NewsCard({
                   : 'bg-[#E0DAD0] text-[#4A443E] hover:text-[#2A2623] hover:bg-[#D6CEBF] border border-[#C8BFB0]'
               }`}
               aria-label="Toggle Thai Translation"
+              aria-pressed={isThai}
             >
               <GlobeIcon className="w-3 h-3 shrink-0" />
               <span>TH</span>
@@ -333,7 +533,7 @@ export default function NewsCard({
 
       {/* Interactive Action Bar (Clean non-white pills) */}
       <div
-        className={`flex items-center justify-between gap-2 pt-3 border-t ${
+        className={`flex items-center justify-between gap-1.5 sm:gap-2 pt-3 border-t ${
           isDusk ? 'border-[#433D58]/60' : 'border-[#D2C9B8]'
         }`}
       >
@@ -344,7 +544,7 @@ export default function NewsCard({
           onClick={() => onToggleBookmark(item.id, item.is_bookmarked)}
           whileTap={{ scale: 0.92 }}
           whileHover={{ y: -1 }}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all touch-manipulation cursor-pointer ${
+          className={`inline-flex items-center justify-center gap-1.5 min-h-[40px] min-w-[40px] px-2.5 sm:px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all touch-manipulation cursor-pointer ${focusRingClass} ${
             item.is_bookmarked
               ? isDusk
                 ? 'bg-amber-950/70 text-amber-200 border border-amber-700/60 font-bold shadow-xs'
@@ -354,9 +554,11 @@ export default function NewsCard({
               : 'bg-[#EFECE6] hover:bg-[#E5DFD3] text-[#4A443E] hover:text-[#2A2623] border border-[#D2C9B8] shadow-2xs'
           }`}
           aria-label={item.is_bookmarked ? 'Remove bookmark' : 'Bookmark item'}
+          aria-pressed={item.is_bookmarked}
         >
           <Bookmark
-            className={`w-3.5 h-3.5 ${
+            aria-hidden="true"
+            className={`w-3.5 h-3.5 shrink-0 ${
               item.is_bookmarked
                 ? isDusk
                   ? 'fill-amber-300 text-amber-300'
@@ -374,7 +576,7 @@ export default function NewsCard({
           onClick={() => onToggleRead(item.id, item.is_read)}
           whileTap={{ scale: 0.92 }}
           whileHover={{ y: -1 }}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all touch-manipulation cursor-pointer ${
+          className={`inline-flex items-center justify-center gap-1.5 min-h-[40px] min-w-[40px] px-2.5 sm:px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all touch-manipulation cursor-pointer ${focusRingClass} ${
             item.is_read
               ? isDusk
                 ? 'bg-emerald-950/70 text-emerald-300 border border-emerald-700/60 font-bold shadow-xs'
@@ -384,9 +586,11 @@ export default function NewsCard({
               : 'bg-[#EFECE6] hover:bg-[#E5DFD3] text-[#4A443E] hover:text-[#2A2623] border border-[#D2C9B8] shadow-2xs'
           }`}
           aria-label={item.is_read ? 'Mark as unread' : 'Mark as read'}
+          aria-pressed={item.is_read}
         >
           <CheckCircle2
-            className={`w-3.5 h-3.5 ${
+            aria-hidden="true"
+            className={`w-3.5 h-3.5 shrink-0 ${
               item.is_read
                 ? isDusk
                   ? 'text-emerald-300 fill-emerald-800/40'
@@ -405,16 +609,20 @@ export default function NewsCard({
           data-testid={`btn-source-${item.id}`}
           whileTap={{ scale: 0.92 }}
           whileHover={{ y: -1 }}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all touch-manipulation border shadow-2xs ${
+          className={`inline-flex items-center justify-center gap-1.5 min-h-[40px] min-w-[40px] px-2.5 sm:px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all touch-manipulation border shadow-2xs ${focusRingClass} ${
             isDusk
               ? 'bg-[#2A263A] text-[#E2DCF0] border border-[#433D58] hover:bg-[#353048]'
               : 'bg-[#EFECE6] hover:bg-[#E5DFD3] text-[#2A2623] border border-[#D2C9B8]'
           }`}
         >
           <span>Read Post</span>
-          <ExternalLink className={`w-3 h-3 ${isDusk ? 'text-[#D4CDE4]' : 'text-[#6A635C]'}`} />
+          <ExternalLink
+            aria-hidden="true"
+            className={`w-3 h-3 shrink-0 ${isDusk ? 'text-[#D4CDE4]' : 'text-[#6A635C]'}`}
+          />
         </motion.a>
       </div>
-    </article>
+      </motion.article>
+    </div>
   );
 }
