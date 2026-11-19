@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Chip, FeedbackBar, Hint, LabButton, StageTracker, Term, TermLine, WinBanner } from './labUi';
+import { ArrowDownIcon, ArrowRightIcon, FlaskIcon, RotateCcwIcon, UnlockIcon } from './icons';
 import { useProgressReporter } from '@/lib/ctf/progress';
 import { useFeedback } from '@/lib/ctf/feedback';
 
@@ -212,11 +213,12 @@ export default function CryptoNibbleLab({ isDusk, slug = 'crypto-nibble' }: { is
             isDusk={isDusk}
             full
           >
-            ⬇ Base64-decode
+            <ArrowDownIcon className="w-3.5 h-3.5 shrink-0" />
+            Base64-decode
           </LabButton>
         ) : (
           <div className={`text-[11px] ${mutedText}`}>
-            Decoded → a stream of two-letter tokens using only 16 symbols (A–J, e–j). 16 = one nibble. Two letters =
+            Decoded <ArrowRightIcon className="inline-block w-3 h-3 align-[-2px] mx-0.5" /> a stream of two-letter tokens using only 16 symbols (A–J, e–j). 16 = one nibble. Two letters =
             one byte.
           </div>
         )}
@@ -250,7 +252,7 @@ export default function CryptoNibbleLab({ isDusk, slug = 'crypto-nibble' }: { is
                         ? 'bg-[#12101a] text-[#B9B2CE] border-[#342F46] hover:bg-[#1f1b2b]'
                         : 'bg-white text-[#443E38] border-[#D2C9B8] hover:bg-[#F3EFE7]'
                     }`}
-                    title={show ? `→ ${ch === ' ' ? 'space' : ch}` : undefined}
+                    title={show ? `-> ${ch === ' ' ? 'space' : ch}` : undefined}
                   >
                     {t}
                   </button>
@@ -268,13 +270,16 @@ export default function CryptoNibbleLab({ isDusk, slug = 'crypto-nibble' }: { is
             className={`rounded-2xl p-4 border space-y-3 ${isDusk ? 'bg-[#161320]/70 border-white/10' : 'bg-[#EFECE6]/90 border-black/5'}`}
           >
             <div className={`text-[11px] font-bold ${isDusk ? 'text-[#D4CDE4]' : 'text-[#443E38]'}`}>
-              Token <span className="font-mono text-rose-400">{det.token}</span> → one character
+              Token <span className="font-mono text-rose-400">{det.token}</span>{' '}
+              <ArrowRightIcon className="inline-block w-3 h-3 align-[-2px] mx-0.5" /> one character
             </div>
 
             <div className="flex items-end gap-2 overflow-x-auto no-scrollbar pb-1">
               <NibbleBox label="letter" value={det.token[0]} isDusk={isDusk} />
               <NibbleBox label="letter" value={det.token[1]} isDusk={isDusk} />
-              <span className={`pb-3 ${mutedText}`}>→</span>
+              <span className={`pb-3 inline-flex items-center ${mutedText}`}>
+                <ArrowRightIcon className="w-3.5 h-3.5" />
+              </span>
               <NibbleBox label="hi nib" value={det.cHi} isDusk={isDusk} />
               <NibbleBox label="lo nib" value={det.cLo} isDusk={isDusk} />
               <span className={`pb-3 ${mutedText}`}>=</span>
@@ -282,7 +287,8 @@ export default function CryptoNibbleLab({ isDusk, slug = 'crypto-nibble' }: { is
             </div>
 
             <div className={`text-[10px] font-mono pl-1 ${mutedText}`}>
-              complement: hi → 10 − {det.cHi} = {det.pHi} &nbsp;•&nbsp; lo →{' '}
+              complement: hi <ArrowRightIcon className="inline-block w-3 h-3 align-[-2px] mx-0.5" /> 10 − {det.cHi} = {det.pHi} &nbsp;•&nbsp; lo{' '}
+              <ArrowRightIcon className="inline-block w-3 h-3 align-[-2px] mx-0.5" />{' '}
               {det.cLo === 0 ? '0 stays 0' : det.cLo <= 9 ? `10 − ${det.cLo} = ${det.pLo}` : `25 − ${det.cLo} = ${det.pLo}`}
             </div>
 
@@ -291,7 +297,9 @@ export default function CryptoNibbleLab({ isDusk, slug = 'crypto-nibble' }: { is
               <NibbleBox label="lo nib" value={det.pLo} isDusk={isDusk} />
               <span className={`pb-3 ${mutedText}`}>=</span>
               <NibbleBox label="plain" value={hex(det.plainByte)} isDusk={isDusk} />
-              <span className={`pb-3 ${mutedText}`}>→</span>
+              <span className={`pb-3 inline-flex items-center ${mutedText}`}>
+                <ArrowRightIcon className="w-3.5 h-3.5" />
+              </span>
               <NibbleBox label="ASCII" value={det.char === ' ' ? '␠' : det.char} accent isDusk={isDusk} />
             </div>
           </motion.div>
@@ -299,7 +307,8 @@ export default function CryptoNibbleLab({ isDusk, slug = 'crypto-nibble' }: { is
           {/* Reveal all — decodes progressively, one character at a time */}
           {!revealed && revealCount === 0 ? (
             <LabButton onClick={startReveal} tone="primary" isDusk={isDusk} full>
-              🔓 Decode the whole message
+              <UnlockIcon className="w-3.5 h-3.5 shrink-0" />
+              Decode the whole message
             </LabButton>
           ) : (
             <div className={`rounded-2xl p-3.5 border space-y-2 ${panel}`}>
@@ -336,14 +345,16 @@ export default function CryptoNibbleLab({ isDusk, slug = 'crypto-nibble' }: { is
           {/* Reset */}
           <div className="flex justify-end">
             <LabButton onClick={resetLab} isDusk={isDusk}>
-              ↺ Reset lab
+              <RotateCcwIcon className="w-3.5 h-3.5 shrink-0" />
+              Reset lab
             </LabButton>
           </div>
 
           {/* Why it's broken: the encoder playground */}
           <div className={`rounded-2xl p-3.5 border space-y-2.5 ${isDusk ? 'bg-[#161320]/60 border-[#342F46]' : 'bg-[#EFECE6]/80 border-[#D2C9B8]'}`}>
-            <div className={`text-[11px] font-bold ${isDusk ? 'text-[#D4CDE4]' : 'text-[#443E38]'}`}>
-              🧪 Why no key = broken: encode your own text
+            <div className={`flex items-center gap-1.5 text-[11px] font-bold ${isDusk ? 'text-[#D4CDE4]' : 'text-[#443E38]'}`}>
+              <FlaskIcon className="w-3.5 h-3.5 shrink-0" />
+              <span>Why no key = broken: encode your own text</span>
             </div>
             <input
               value={play}

@@ -2,8 +2,11 @@ name: Daily CyberSec & Tech Digest Ingestion
 
 on:
   schedule:
-    # Runs daily at 23:30 UTC (06:30 AM Bangkok time / UTC+7)
-    - cron: '30 23 * * *'
+    # Scheduled daily at 20:30 UTC (03:30 AM Bangkok time / UTC+7).
+    # GitHub Actions significantly delays scheduled runs (over the last month, runs
+    # scheduled for 06:30 Bangkok actually started between 08:20 and 11:42 Bangkok),
+    # so we schedule 3 hours earlier to finish before the morning commute.
+    - cron: '30 20 * * *'
   workflow_dispatch:
     inputs:
       practice_refill:
@@ -43,6 +46,11 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r scripts/requirements.txt
+
+      - name: Run ingestion pipeline unit tests
+        continue-on-error: true
+        run: |
+          python -m unittest discover -s scripts/tests -v
 
       - name: Run intelligence ingestion
         env:

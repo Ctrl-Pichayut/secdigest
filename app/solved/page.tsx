@@ -4,6 +4,8 @@ import React from 'react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { ArrowLeft, FlaskConical, ChevronRight, CheckCircle2, Eye } from 'lucide-react';
+import { CoffeeIcon, PartyIcon, SunsetIcon } from '@/components/icons';
+import { CATEGORY_ICON, SmileIcon } from '@/components/labs/icons';
 import { useTheme } from '@/lib/ctf/useTheme';
 import { WRITEUPS, CATEGORY_ACCENT, type Writeup } from '@/lib/ctf/writeups';
 import { useLabProgress, useAllProgress, isDone, type LabProgress } from '@/lib/ctf/progress';
@@ -34,6 +36,7 @@ function StatusBadge({ p, isDusk }: { p: LabProgress | null; isDusk: boolean }) 
 
 function CtfCard({ w, isDusk }: { w: Writeup; isDusk: boolean }) {
   const accent = CATEGORY_ACCENT[w.category];
+  const CategoryIcon = CATEGORY_ICON[w.category];
   const p = useLabProgress(w.slug);
   const pct = p && p.total > 0 ? Math.round((Math.min(p.stage, p.total) / p.total) * 100) : 0;
 
@@ -44,8 +47,9 @@ function CtfCard({ w, isDusk }: { w: Writeup; isDusk: boolean }) {
         className={`relative rounded-3xl p-5 border-2 shadow-sm ${isDusk ? accent.dusk : accent.paper}`}
       >
         <div className="flex items-center justify-between gap-2 mb-2.5">
-          <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold border ${isDusk ? accent.duskSoft : accent.paperSoft}`}>
-            {accent.emoji} {accent.label}
+          <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border ${isDusk ? accent.duskSoft : accent.paperSoft}`}>
+            <CategoryIcon className="w-3.5 h-3.5 shrink-0" />
+            {accent.label}
           </span>
           <span className={`text-[10px] font-bold uppercase tracking-wide ${isDusk ? 'text-[#B3ACC5]' : 'text-[#6A635C]'}`}>
             {w.ctf} · {w.difficulty}
@@ -112,13 +116,23 @@ export default function SolvedListPage() {
             <button
               type="button"
               onClick={toggle}
-              className={`px-3 py-2 rounded-2xl text-xs font-bold border transition-all touch-manipulation min-h-[40px] ${
+              className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-2xl text-xs font-bold border transition-all touch-manipulation min-h-[40px] ${
                 isDusk
                   ? 'bg-[#2A263A] text-[#EAE6F2] border-[#3E3852] hover:bg-[#353048]'
                   : 'bg-[#EDE8DF] text-[#2A2623] border-[#D2C9B8] hover:bg-[#E2DBD0]'
               }`}
             >
-              {isDusk ? '🌆 Dusk' : '☕ Paper'}
+              {isDusk ? (
+                <>
+                  <SunsetIcon className="w-3.5 h-3.5 shrink-0" />
+                  Dusk
+                </>
+              ) : (
+                <>
+                  <CoffeeIcon className="w-3.5 h-3.5 shrink-0" />
+                  Paper
+                </>
+              )}
             </button>
           </div>
 
@@ -139,8 +153,15 @@ export default function SolvedListPage() {
           {/* Overall labs-completed progress */}
           <div className={`mt-4 rounded-2xl p-3.5 border space-y-2 ${isDusk ? 'bg-[#2A263A] border-[#3E3852]' : 'bg-[#EDE8DF] border-[#D8D0C0]'}`}>
             <div className="flex items-center justify-between text-xs font-bold">
-              <span>
-                {doneCount === WRITEUPS.length ? `All ${WRITEUPS.length} labs complete! 🎉` : `${doneCount} of ${WRITEUPS.length} labs done`}
+              <span className="inline-flex items-center gap-1.5">
+                {doneCount === WRITEUPS.length ? (
+                  <>
+                    All {WRITEUPS.length} labs complete!
+                    <PartyIcon className="w-3.5 h-3.5 shrink-0" />
+                  </>
+                ) : (
+                  `${doneCount} of ${WRITEUPS.length} labs done`
+                )}
               </span>
               <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${
                 doneCount === WRITEUPS.length
@@ -168,7 +189,8 @@ export default function SolvedListPage() {
           ))}
 
           <p className={`text-[11px] text-center leading-relaxed px-4 pt-2 ${isDusk ? 'text-[#7d7691]' : 'text-[#8a8378]'}`}>
-            More write-ups get added here over time. Finish reading these three first. 🙂
+            More write-ups get added here over time. Finish reading these three first.{' '}
+            <SmileIcon className="inline-block w-3.5 h-3.5 align-[-2px]" />
           </p>
         </main>
       </div>

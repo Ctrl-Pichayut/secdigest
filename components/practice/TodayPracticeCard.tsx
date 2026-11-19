@@ -9,6 +9,7 @@ import { computeStats } from '@/lib/practice/scheduler';
 import { usePractice } from '@/lib/practice/store';
 import { usePracticeSettings } from '@/lib/practice/settings';
 import { ACTIVE_LANGS } from '@/lib/practice/types';
+import { CheckIcon } from '@/components/icons';
 import { GoalBar, palette } from './ui';
 
 /**
@@ -51,8 +52,15 @@ export default function TodayPracticeCard({ isDusk }: { isDusk: boolean }) {
           <GraduationCap className="w-5 h-5" />
         </div>
         <div className="flex-1 min-w-0">
-          <div className={`text-[10px] font-bold uppercase tracking-wider ${p.muted}`}>
-            Today&apos;s practice{stats.practicedToday && ' · ✓ done today'}
+          <div className={`flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider ${p.muted}`}>
+            <span>Today&apos;s practice</span>
+            {stats.practicedToday && (
+              <span className="inline-flex items-center gap-1">
+                <span>·</span>
+                <CheckIcon className="w-3 h-3 shrink-0" />
+                <span>done today</span>
+              </span>
+            )}
           </div>
           <div className={`text-[15px] font-extrabold tracking-tight ${p.strong}`}>{headline}</div>
         </div>

@@ -11,15 +11,66 @@ import { useTheme } from '@/lib/ctf/useTheme';
 import { useAllProgress, isDone } from '@/lib/ctf/progress';
 import { WRITEUPS } from '@/lib/ctf/writeups';
 import TodayPracticeCard from '@/components/practice/TodayPracticeCard';
+import {
+  BoltIcon,
+  BookmarkIcon,
+  CheckIcon,
+  CloudIcon,
+  CoffeeIcon,
+  FlameIcon,
+  GiftIcon,
+  MoonIcon,
+  PartyIcon,
+  SparkleIcon,
+  SunIcon,
+  SunsetIcon,
+  TrophyIcon,
+  type IconComponent,
+} from '@/components/icons';
 
-const FILTER_TABS: { id: FilterCategory; label: string }[] = [
-  { id: 'ALL', label: '✨ All' },
-  { id: 'AI_FREE', label: '🎁 Free AI & Credits' },
-  { id: 'CTF_COMPETITION', label: '🏆 CTF & Labs' },
-  { id: 'CVE_SECURITY', label: '🔥 Hot Bugs (KEV)' },
-  { id: 'DEV_CLOUD', label: '☁️ Dev & Cloud' },
-  { id: 'SAVED', label: '🔖 Saved' },
+const FILTER_TABS: { id: FilterCategory; label: string; Icon: IconComponent }[] = [
+  { id: 'ALL', label: 'All', Icon: SparkleIcon },
+  { id: 'AI_FREE', label: 'Free AI & Credits', Icon: GiftIcon },
+  { id: 'CTF_COMPETITION', label: 'CTF & Labs', Icon: TrophyIcon },
+  { id: 'CVE_SECURITY', label: 'Hot Bugs (KEV)', Icon: FlameIcon },
+  { id: 'DEV_CLOUD', label: 'Dev & Cloud', Icon: CloudIcon },
+  { id: 'SAVED', label: 'Saved', Icon: BookmarkIcon },
 ];
+
+interface ClientTimeInfo {
+  badge: string;
+  Icon: IconComponent;
+  subtitle: string;
+  formattedDate: string;
+}
+
+const DEFAULT_GREETING_BADGE = 'DAILY DROP';
+const DEFAULT_SUBTITLE = 'Daily CS, Security & AI Intelligence';
+
+function getClientTimeInfo(now: Date): ClientTimeInfo {
+  const hour = now.getHours();
+  let badge = 'EVENING DROP';
+  let Icon: IconComponent = MoonIcon;
+  let subtitle = 'Evening CS, Security & AI Intelligence';
+
+  if (hour >= 5 && hour < 12) {
+    badge = 'MORNING DROP';
+    Icon = SunIcon;
+    subtitle = 'Daily CS, Security & AI Intelligence';
+  } else if (hour >= 12 && hour < 18) {
+    badge = 'AFTERNOON DROP';
+    Icon = CoffeeIcon;
+    subtitle = 'Midday CS, Security & AI Intelligence';
+  }
+
+  const formattedDate = new Intl.DateTimeFormat('en-US', {
+    weekday: 'long',
+    month: 'short',
+    day: 'numeric',
+  }).format(now);
+
+  return { badge, Icon, subtitle, formattedDate };
+}
 
 export default function HomePage() {
   const [items, setItems] = useState<NewsItem[]>([]);
@@ -39,25 +90,12 @@ export default function HomePage() {
     [allProgress]
   );
 
-  // Time-aware greeting badge based on user's local hour
-  const timeGreeting = useMemo(() => {
-    const hour = new Date().getHours();
-    if (hour >= 5 && hour < 12) {
-      return {
-        badge: '☀️ MORNING DROP',
-        subtitle: 'Daily CS, Security & AI Intelligence',
-      };
-    }
-    if (hour >= 12 && hour < 18) {
-      return {
-        badge: '☕ AFTERNOON DROP',
-        subtitle: 'Midday CS, Security & AI Intelligence',
-      };
-    }
-    return {
-      badge: '🌙 EVENING DROP',
-      subtitle: 'Evening CS, Security & AI Intelligence',
-    };
+  // Populate time-dependent greeting and date only after mount so prerendered
+  // HTML matches the initial client render and avoids React hydration error #418.
+  const [clientTime, setClientTime] = useState<ClientTimeInfo | null>(null);
+
+  useEffect(() => {
+    setClientTime(getClientTimeInfo(new Date()));
   }, []);
 
   // Load news items from Supabase
@@ -194,15 +232,7 @@ export default function HomePage() {
   const totalCount = items.length;
   const totalReadCount = totalCount - unreadCount;
   const percentRead = totalCount > 0 ? Math.round((totalReadCount / totalCount) * 100) : 0;
-
-  // Formatted Date
-  const formattedDate = useMemo(() => {
-    return new Intl.DateTimeFormat('en-US', {
-      weekday: 'long',
-      month: 'short',
-      day: 'numeric',
-    }).format(new Date());
-  }, []);
+  const GreetingIcon = clientTime ? clientTime.Icon : BoltIcon;
 
   return (
     <div
@@ -225,20 +255,21 @@ export default function HomePage() {
         >
           <div className="flex items-center justify-between mb-2.5">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-amber-500 via-rose-500 to-violet-600 flex items-center justify-center text-white shadow-md shadow-rose-500/20 text-lg">
-                ⚡
+              <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-amber-500 via-rose-500 to-violet-600 flex items-center justify-center text-white shadow-md shadow-rose-500/20">
+                <BoltIcon className="w-5 h-5" />
               </div>
               <div>
                 <div className="flex items-center gap-1.5">
                   <span
                     data-testid="time-greeting-badge"
-                    className={`text-[11px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border shadow-2xs ${
+                    className={`inline-flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border shadow-2xs ${
                       isDusk
                         ? 'bg-[#2A263A] text-[#D8D2E7] border-[#3E3852]'
                         : 'bg-[#EDE8DF] text-[#4A443E] border-[#D2C9B8]'
                     }`}
                   >
-                    {timeGreeting.badge}
+                    <GreetingIcon className="w-3 h-3 shrink-0" />
+                    <span>{clientTime ? clientTime.badge : DEFAULT_GREETING_BADGE}</span>
                   </span>
                 </div>
                 <h1
@@ -272,7 +303,7 @@ export default function HomePage() {
                         : 'bg-gradient-to-tr from-amber-500 to-rose-500'
                     }`}
                   >
-                    {labsDone === WRITEUPS.length ? '✓' : labsDone}
+                    {labsDone === WRITEUPS.length ? <CheckIcon className="w-3 h-3" /> : labsDone}
                   </span>
                 )}
               </Link>
@@ -290,7 +321,14 @@ export default function HomePage() {
                 }`}
                 aria-label="Toggle Reading Theme"
               >
-                <span>{isDusk ? '🌆 Dusk' : '☕ Paper'}</span>
+                <span className="inline-flex items-center gap-1.5">
+                  {isDusk ? (
+                    <SunsetIcon className="w-3.5 h-3.5 shrink-0" />
+                  ) : (
+                    <CoffeeIcon className="w-3.5 h-3.5 shrink-0" />
+                  )}
+                  <span>{isDusk ? 'Dusk' : 'Paper'}</span>
+                </span>
               </motion.button>
 
               {/* Refresh Button */}
@@ -314,11 +352,13 @@ export default function HomePage() {
           </div>
 
           <p
-            className={`text-xs font-medium mb-3 pl-1 ${
+            className={`text-xs font-medium mb-3 pl-1 min-h-4 ${
               isDusk ? 'text-[#B3ACC5]' : 'text-[#5A544E]'
             }`}
           >
-            {formattedDate} • {timeGreeting.subtitle}
+            {clientTime
+              ? `${clientTime.formattedDate} • ${clientTime.subtitle}`
+              : DEFAULT_SUBTITLE}
           </p>
 
           {/* Interactive Daily Progress Bar */}
@@ -330,10 +370,13 @@ export default function HomePage() {
             }`}
           >
             <div className="flex items-center justify-between text-xs font-bold">
-              <span data-testid="progress-text">
-                {totalCount > 0 && totalReadCount === totalCount
-                  ? `All ${totalCount} posts caught up today! 🎉`
-                  : `${totalReadCount} of ${totalCount} posts caught up today 🎉`}
+              <span data-testid="progress-text" className="inline-flex items-center gap-1.5">
+                <span>
+                  {totalCount > 0 && totalReadCount === totalCount
+                    ? `All ${totalCount} posts caught up today!`
+                    : `${totalReadCount} of ${totalCount} posts caught up today`}
+                </span>
+                <PartyIcon className="w-3.5 h-3.5 shrink-0" />
               </span>
               <span
                 data-testid="unread-counter"
@@ -377,6 +420,7 @@ export default function HomePage() {
         >
           {FILTER_TABS.map((tab) => {
             const isActive = activeFilter === tab.id;
+            const TabIcon = tab.Icon;
             return (
               <motion.button
                 key={tab.id}
@@ -384,7 +428,7 @@ export default function HomePage() {
                 data-testid={`filter-${tab.id.toLowerCase()}`}
                 onClick={() => setActiveFilter(tab.id)}
                 whileTap={{ scale: 0.94 }}
-                className={`shrink-0 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all touch-manipulation cursor-pointer ${
+                className={`shrink-0 inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all touch-manipulation cursor-pointer ${
                   isActive
                     ? isDusk
                       ? 'bg-[#F0ECF8] text-[#1E1B29] shadow-sm border border-[#F0ECF8]'
@@ -394,7 +438,8 @@ export default function HomePage() {
                     : 'bg-[#EDE8DF] text-[#5A544E] border border-[#D2C9B8] hover:bg-[#E2DBD0] hover:text-[#2A2623]'
                 }`}
               >
-                {tab.label}
+                <TabIcon className="w-3.5 h-3.5 shrink-0" />
+                <span>{tab.label}</span>
               </motion.button>
             );
           })}
@@ -533,13 +578,17 @@ export default function HomePage() {
             }`}
           >
             <div
-              className={`w-12 h-12 rounded-2xl mx-auto flex items-center justify-center mb-3 text-xl border ${
+              className={`w-12 h-12 rounded-2xl mx-auto flex items-center justify-center mb-3 border ${
                 isDusk
                   ? 'bg-[#352F46] border-[#4A4462] text-amber-300'
                   : 'bg-[#E5DFD3] border-[#D2C9B8] text-amber-800'
               }`}
             >
-              {activeFilter === 'SAVED' ? '🔖' : '✨'}
+              {activeFilter === 'SAVED' ? (
+                <BookmarkIcon className="w-5 h-5" />
+              ) : (
+                <SparkleIcon className="w-5 h-5" />
+              )}
             </div>
             <h3
               className={`text-sm font-bold mb-1 ${
@@ -599,13 +648,13 @@ export default function HomePage() {
             >
               <div className="flex items-center gap-2">
                 <span
-                  className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold ${
+                  className={`w-5 h-5 rounded-full flex items-center justify-center ${
                     isDusk
                       ? 'bg-emerald-950/70 text-emerald-300'
                       : 'bg-emerald-200/90 text-emerald-950'
                   }`}
                 >
-                  ✓
+                  <CheckIcon className="w-3 h-3" />
                 </span>
                 <span>Caught Up Posts ({readItems.length})</span>
               </div>

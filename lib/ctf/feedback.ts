@@ -152,9 +152,13 @@ export function playCue(cue: Cue) {
  */
 export function useFeedback() {
   const [state, setState] = useState<Prefs>({ sound: false, haptics: true });
+  const [vibrateSupported, setVibrateSupported] = useState(false);
 
   useEffect(() => {
     setState(getPrefs());
+    setVibrateSupported(
+      typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function'
+    );
     const fn = () => setState({ ...getPrefs() });
     prefListeners.add(fn);
     return () => {
@@ -176,9 +180,6 @@ export function useFeedback() {
   }, []);
 
   const cue = useCallback((c: Cue) => playCue(c), []);
-
-  const vibrateSupported =
-    typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function';
 
   return {
     sound: state.sound,

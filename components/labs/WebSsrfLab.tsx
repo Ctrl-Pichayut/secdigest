@@ -2,6 +2,8 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { Chip, FeedbackBar, Hint, LabButton, StageTracker, TermLog, WinBanner } from './labUi';
+import { BoltIcon } from '@/components/icons';
+import { ArrowRightIcon, CalculatorIcon, RotateCcwIcon } from './icons';
 import { useProgressReporter } from '@/lib/ctf/progress';
 import { useFeedback } from '@/lib/ctf/feedback';
 
@@ -404,7 +406,8 @@ export default function WebSsrfLab({ isDusk, slug = 'web-ssrf' }: { isDusk: bool
           }`}
         />
         <LabButton onClick={() => run()} tone="primary" isDusk={isDusk} full>
-          ⚡ Fetch (as the server)
+          <BoltIcon className="w-3.5 h-3.5 shrink-0" />
+          Fetch (as the server)
         </LabButton>
 
         {chips.length > 0 && (
@@ -425,8 +428,11 @@ export default function WebSsrfLab({ isDusk, slug = 'web-ssrf' }: { isDusk: bool
           isDusk ? 'bg-[#161320]/60 border-[#342F46]' : 'bg-[#EFECE6]/80 border-[#D2C9B8]'
         }`}
       >
-        <div className={`text-[11px] font-bold mb-2 ${isDusk ? 'text-[#D4CDE4]' : 'text-[#443E38]'}`}>
-          🧮 IP → decimal converter (your bypass tool)
+        <div className={`flex items-center gap-1.5 text-[11px] font-bold mb-2 ${isDusk ? 'text-[#D4CDE4]' : 'text-[#443E38]'}`}>
+          <CalculatorIcon className="w-3.5 h-3.5 shrink-0" />
+          <span>
+            IP <ArrowRightIcon className="inline-block w-3 h-3 align-[-2px] mx-0.5" /> decimal converter (your bypass tool)
+          </span>
         </div>
         <div className="flex items-center gap-2">
           <input
@@ -475,7 +481,8 @@ export default function WebSsrfLab({ isDusk, slug = 'web-ssrf' }: { isDusk: bool
 
       <div className="flex justify-end">
         <LabButton onClick={reset} isDusk={isDusk}>
-          ↺ Reset lab
+          <RotateCcwIcon className="w-3.5 h-3.5 shrink-0" />
+          Reset lab
         </LabButton>
       </div>
     </div>

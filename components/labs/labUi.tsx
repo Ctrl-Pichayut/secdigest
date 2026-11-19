@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Volume2, VolumeX, Vibrate } from 'lucide-react';
+import { CheckIcon, LightbulbIcon, PartyIcon } from '@/components/icons';
 import { useFeedback } from '@/lib/ctf/feedback';
 
 /**
@@ -157,7 +158,7 @@ export function StageTracker({
   current,
   isDusk,
 }: {
-  stages: string[];
+  stages: React.ReactNode[];
   current: number; // index of first NOT-yet-done stage
   isDusk: boolean;
 }) {
@@ -210,7 +211,7 @@ export function StageTracker({
                     exit={{ scale: 0, opacity: 0 }}
                     transition={{ duration: 0.2 }}
                   >
-                    {done ? '✓' : i + 1}
+                    {done ? <CheckIcon className="w-3 h-3" /> : i + 1}
                   </motion.span>
                 </AnimatePresence>
               </motion.span>
@@ -247,7 +248,10 @@ export function Hint({ children, isDusk, swapKey }: { children: React.ReactNode;
         isDusk ? 'bg-[#161320]/70 border-white/10 text-[#D4CDE4]' : 'bg-[#EFECE6]/90 border-black/5 text-[#443E38]'
       }`}
     >
-      <span className="font-bold">💡 Hint: </span>
+      <span className="font-bold">
+        <LightbulbIcon className="inline-block w-3.5 h-3.5 align-[-2px] mr-1" />
+        Hint:{' '}
+      </span>
       {swapKey !== undefined ? (
         <AnimatePresence mode="wait" initial={false}>
           <motion.span
@@ -296,12 +300,12 @@ export function WinBanner({ flag, isDusk }: { flag: string; isDusk: boolean }) {
         />
       ))}
       <motion.div
-        className="text-2xl mb-1"
+        className={`flex justify-center mb-1 ${isDusk ? 'text-amber-300' : 'text-emerald-700'}`}
         initial={{ rotate: -20, scale: 0 }}
         animate={{ rotate: 0, scale: 1 }}
         transition={{ type: 'spring', stiffness: 300, damping: 12, delay: 0.05 }}
       >
-        🎉
+        <PartyIcon className="w-7 h-7" />
       </motion.div>
       <div className={`text-xs font-bold mb-1.5 ${isDusk ? 'text-emerald-200' : 'text-emerald-900'}`}>
         Flag captured

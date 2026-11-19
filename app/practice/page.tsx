@@ -11,6 +11,7 @@ import { presetIdFor, usePracticeSettings, WEIGHT_PRESETS } from '@/lib/practice
 import { ACTIVE_LANGS, LANG_META, type SessionMode } from '@/lib/practice/types';
 import PracticeSession from '@/components/practice/PracticeSession';
 import { GoalBar, LangChip, palette } from '@/components/practice/ui';
+import { CheckIcon, TargetIcon } from '@/components/icons';
 
 function SyncPill({ status, pending, isDusk }: { status: SyncStatus; pending: number; isDusk: boolean }) {
   const p = palette(isDusk);
@@ -135,13 +136,21 @@ export default function PracticePage() {
           {/* Weekly goal */}
           <div className={`mt-4 rounded-2xl p-3.5 border space-y-2.5 ${p.panel}`}>
             <div className={`flex items-center justify-between text-xs font-bold ${p.strong}`}>
-              <span>
-                {stats.weekSessions >= settings.weeklyGoal
-                  ? 'Weekly goal reached 🎯'
-                  : `${stats.weekSessions} of ${settings.weeklyGoal} sessions this week`}
+              <span className="inline-flex items-center gap-1.5">
+                {stats.weekSessions >= settings.weeklyGoal ? (
+                  <>
+                    <span>Weekly goal reached</span>
+                    <TargetIcon className="w-3.5 h-3.5 shrink-0" />
+                  </>
+                ) : (
+                  `${stats.weekSessions} of ${settings.weeklyGoal} sessions this week`
+                )}
               </span>
               {stats.practicedToday && (
-                <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${p.good}`}>✓ Today</span>
+                <span className={`inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${p.good}`}>
+                  <CheckIcon className="w-3 h-3 shrink-0" />
+                  <span>Today</span>
+                </span>
               )}
             </div>
             <GoalBar done={stats.weekSessions} goal={settings.weeklyGoal} isDusk={isDusk} />

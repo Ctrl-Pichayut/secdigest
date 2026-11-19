@@ -5,6 +5,17 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { motion, AnimatePresence, useScroll, useSpring } from 'framer-motion';
 import { ArrowLeft, ChevronDown, Flag, Lightbulb, FlaskConical, ChevronRight } from 'lucide-react';
+import { CoffeeIcon, SunsetIcon, TargetIcon, type IconComponent } from '@/components/icons';
+import {
+  ArrowLeftIcon,
+  BooksIcon,
+  BrickWallIcon,
+  CATEGORY_ICON,
+  FlaskIcon,
+  LadderIcon,
+  NoteIcon,
+  TelescopeIcon,
+} from '@/components/labs/icons';
 import { useTheme } from '@/lib/ctf/useTheme';
 import { getWriteup, CATEGORY_ACCENT, WRITEUPS } from '@/lib/ctf/writeups';
 import WebSsrfLab from '@/components/labs/WebSsrfLab';
@@ -13,13 +24,13 @@ import PwnRaceLab from '@/components/labs/PwnRaceLab';
 
 function Collapsible({
   title,
-  emoji,
+  Icon,
   isDusk,
   defaultOpen = false,
   children,
 }: {
   title: string;
-  emoji: string;
+  Icon: IconComponent;
   isDusk: boolean;
   defaultOpen?: boolean;
   children: React.ReactNode;
@@ -34,7 +45,7 @@ function Collapsible({
         className="w-full flex items-center justify-between p-4 touch-manipulation cursor-pointer min-h-[48px]"
       >
         <span className={`text-sm font-bold flex items-center gap-2 ${isDusk ? 'text-[#F0ECF8]' : 'text-[#2A2623]'}`}>
-          <span>{emoji}</span>
+          <Icon className="w-4 h-4 shrink-0" />
           {title}
         </span>
         <ChevronDown
@@ -74,8 +85,9 @@ export default function WriteupDetailPage() {
       <div className={`min-h-screen w-full flex items-center justify-center ${isDusk ? 'bg-[#1E1B29] text-[#EAE6F2]' : 'bg-[#E5DFD3] text-[#2A2623]'}`}>
         <div className="text-center space-y-3 px-6">
           <p className="text-sm font-bold">Write-up not found.</p>
-          <Link href="/solved" className="inline-block text-xs font-bold text-rose-500">
-            ← Back to Solved CTF
+          <Link href="/solved" className="inline-flex items-center gap-1 text-xs font-bold text-rose-500">
+            <ArrowLeftIcon className="w-3.5 h-3.5 shrink-0" />
+            Back to Solved CTF
           </Link>
         </div>
       </div>
@@ -83,6 +95,7 @@ export default function WriteupDetailPage() {
   }
 
   const accent = CATEGORY_ACCENT[w.category];
+  const CategoryIcon = CATEGORY_ICON[w.category];
   const mutedText = isDusk ? 'text-[#B3ACC5]' : 'text-[#5A544E]';
 
   const Lab = w.lab === 'web-ssrf' ? WebSsrfLab : w.lab === 'crypto-nibble' ? CryptoNibbleLab : PwnRaceLab;
@@ -90,6 +103,7 @@ export default function WriteupDetailPage() {
   // Next write-up in the list (wraps around) for sequential reading.
   const idx = WRITEUPS.findIndex((x) => x.slug === w.slug);
   const next = WRITEUPS[(idx + 1) % WRITEUPS.length];
+  const NextCategoryIcon = CATEGORY_ICON[next.category];
   const hasNext = WRITEUPS.length > 1 && next.slug !== w.slug;
 
   const scrollToLab = () => {
@@ -126,11 +140,11 @@ export default function WriteupDetailPage() {
                 type="button"
                 onClick={toggle}
                 aria-label="Toggle reading theme"
-                className={`px-3 py-2 rounded-2xl text-xs font-bold border transition-all touch-manipulation min-h-[40px] min-w-[40px] ${
+                className={`inline-flex items-center justify-center px-3 py-2 rounded-2xl text-xs font-bold border transition-all touch-manipulation min-h-[40px] min-w-[40px] ${
                   isDusk ? 'bg-[#2A263A] text-[#EAE6F2] border-[#3E3852]' : 'bg-[#EDE8DF] text-[#2A2623] border-[#D2C9B8]'
                 }`}
               >
-                {isDusk ? '🌆' : '☕'}
+                {isDusk ? <SunsetIcon className="w-4 h-4" /> : <CoffeeIcon className="w-4 h-4" />}
               </button>
             </div>
           </div>
@@ -147,8 +161,9 @@ export default function WriteupDetailPage() {
           {/* Title block */}
           <div>
             <div className="flex items-center gap-2 mb-2">
-              <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold border ${isDusk ? accent.duskSoft : accent.paperSoft}`}>
-                {accent.emoji} {accent.label}
+              <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border ${isDusk ? accent.duskSoft : accent.paperSoft}`}>
+                <CategoryIcon className="w-3.5 h-3.5 shrink-0" />
+                {accent.label}
               </span>
               <span className={`text-[10px] font-bold uppercase tracking-wide ${mutedText}`}>
                 {w.ctf} · {w.difficulty}
@@ -175,14 +190,14 @@ export default function WriteupDetailPage() {
           </div>
 
           {/* TL;DR */}
-          <Collapsible title="TL;DR — the whole solve" emoji="📝" isDusk={isDusk} defaultOpen>
+          <Collapsible title="TL;DR — the whole solve" Icon={NoteIcon} isDusk={isDusk} defaultOpen>
             <p className="text-xs leading-relaxed">{w.tldr}</p>
           </Collapsible>
 
           {/* THE LAB */}
           <div id="interactive-lab" className="scroll-mt-20">
             <div className={`flex items-center gap-2 mb-2.5 px-1`}>
-              <span className="text-lg">🧪</span>
+              <FlaskIcon className={`w-5 h-5 shrink-0 ${isDusk ? 'text-[#F0ECF8]' : 'text-[#2A2623]'}`} />
               <h2 className={`text-sm font-black uppercase tracking-wide ${isDusk ? 'text-[#F0ECF8]' : 'text-[#2A2623]'}`}>
                 Interactive lab
               </h2>
@@ -193,7 +208,7 @@ export default function WriteupDetailPage() {
           </div>
 
           {/* Concepts */}
-          <Collapsible title="Background concepts" emoji="📚" isDusk={isDusk}>
+          <Collapsible title="Background concepts" Icon={BooksIcon} isDusk={isDusk}>
             <div className="space-y-2.5 pt-1">
               {w.concepts.map((c) => (
                 <div key={c.term}>
@@ -205,7 +220,7 @@ export default function WriteupDetailPage() {
           </Collapsible>
 
           {/* Chain */}
-          <Collapsible title="The solve, step by step" emoji="🪜" isDusk={isDusk}>
+          <Collapsible title="The solve, step by step" Icon={LadderIcon} isDusk={isDusk}>
             <ol className="space-y-2.5 pt-1">
               {w.chain.map((s, i) => (
                 <li key={i} className="flex gap-2.5">
@@ -226,7 +241,7 @@ export default function WriteupDetailPage() {
           </Collapsible>
 
           {/* Dead ends */}
-          <Collapsible title="Dead ends (worth remembering)" emoji="🧱" isDusk={isDusk}>
+          <Collapsible title="Dead ends (worth remembering)" Icon={BrickWallIcon} isDusk={isDusk}>
             <ul className="space-y-2 pt-1 list-disc pl-4">
               {w.deadEnds.map((d, i) => (
                 <li key={i} className="text-xs leading-relaxed">
@@ -237,7 +252,7 @@ export default function WriteupDetailPage() {
           </Collapsible>
 
           {/* Takeaways */}
-          <Collapsible title="Takeaways" emoji="🎯" isDusk={isDusk}>
+          <Collapsible title="Takeaways" Icon={TargetIcon} isDusk={isDusk}>
             <ul className="space-y-2 pt-1 list-disc pl-4">
               {w.takeaways.map((t, i) => (
                 <li key={i} className="text-xs leading-relaxed">
@@ -248,7 +263,7 @@ export default function WriteupDetailPage() {
           </Collapsible>
 
           {/* Further reading */}
-          <Collapsible title="Study next" emoji="🔭" isDusk={isDusk}>
+          <Collapsible title="Study next" Icon={TelescopeIcon} isDusk={isDusk}>
             <ul className="space-y-1.5 pt-1 list-disc pl-4">
               {w.furtherReading.map((f, i) => (
                 <li key={i} className="text-xs leading-relaxed">
@@ -280,8 +295,9 @@ export default function WriteupDetailPage() {
               >
                 <div className="min-w-0">
                   <div className={`text-[10px] font-bold uppercase tracking-wider ${mutedText}`}>Next write-up</div>
-                  <div className={`text-sm font-extrabold truncate ${isDusk ? 'text-[#F0ECF8]' : 'text-[#2A2623]'}`}>
-                    {CATEGORY_ACCENT[next.category].emoji} {next.title}
+                  <div className={`text-sm font-extrabold flex items-center gap-1.5 min-w-0 ${isDusk ? 'text-[#F0ECF8]' : 'text-[#2A2623]'}`}>
+                    <NextCategoryIcon className="w-4 h-4 shrink-0" />
+                    <span className="truncate">{next.title}</span>
                   </div>
                 </div>
                 <ChevronRight className={`w-5 h-5 shrink-0 ${isDusk ? 'text-[#B3ACC5]' : 'text-[#6A635C]'}`} />

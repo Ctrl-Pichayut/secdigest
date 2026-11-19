@@ -4,6 +4,7 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { Check, X } from 'lucide-react';
 import { LANG_META, type Lang } from '@/lib/practice/types';
+import { CIcon, JavaIcon, JsIcon, PythonIcon, type IconComponent } from '@/components/icons';
 
 /**
  * Shared pieces for the Practice feature. Code blocks stay dark in both
@@ -36,16 +37,24 @@ const LANG_STYLE: Record<Lang, { paper: string; dusk: string }> = {
   java: { paper: 'bg-[#F2E2DA] text-[#5C2E1B] border-[#E0C2B4]', dusk: 'bg-rose-950/70 text-rose-300 border-rose-700/60' },
 };
 
+const LANG_ICON: Record<Lang, IconComponent> = {
+  python: PythonIcon,
+  c: CIcon,
+  js: JsIcon,
+  java: JavaIcon,
+};
+
 export function LangChip({ lang, isDusk, small }: { lang: Lang; isDusk: boolean; small?: boolean }) {
   const meta = LANG_META[lang];
+  const Icon = LANG_ICON[lang];
   return (
     <span
       className={`inline-flex items-center gap-1 rounded-full border font-bold ${small ? 'px-2 py-0.5 text-[10px]' : 'px-2.5 py-1 text-[11px]'} ${
         isDusk ? LANG_STYLE[lang].dusk : LANG_STYLE[lang].paper
       }`}
     >
-      <span aria-hidden>{meta.emoji}</span>
-      {meta.label}
+      <Icon className={small ? 'w-3 h-3 shrink-0' : 'w-3.5 h-3.5 shrink-0'} />
+      <span>{meta.label}</span>
     </span>
   );
 }

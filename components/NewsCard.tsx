@@ -4,6 +4,17 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ExternalLink, Bookmark, CheckCircle2 } from 'lucide-react';
 import { NewsItem } from '@/lib/types';
+import {
+  BrainIcon,
+  CloudIcon,
+  FlameIcon,
+  GiftIcon,
+  GlobeIcon,
+  HourglassIcon,
+  LightbulbIcon,
+  TrophyIcon,
+  type IconComponent,
+} from '@/components/icons';
 
 interface NewsCardProps {
   item: NewsItem;
@@ -53,10 +64,19 @@ export default function NewsCard({
   const isDusk = theme === 'dusk';
 
   // Category visual metadata per theme (Zero #FFFFFF, Zero #09090b)
-  const categoryMeta = isDusk
+  const categoryMeta: {
+    label: string;
+    Icon: IconComponent | null;
+    cardBg: string;
+    cardBorder: string;
+    badgeClass: string;
+    takeawayBox: string;
+    takeawayLabel: string;
+  } = isDusk
     ? {
         AI_FREE: {
-          label: '🎁 Free AI & Credits',
+          label: 'Free AI & Credits',
+          Icon: GiftIcon,
           cardBg: 'bg-[#1D2E2B]',
           cardBorder: 'border-[#2E4B45]',
           badgeClass: 'bg-emerald-950/80 text-emerald-300 border-emerald-700/60',
@@ -64,7 +84,8 @@ export default function NewsCard({
           takeawayLabel: 'text-emerald-300',
         },
         CTF_COMPETITION: {
-          label: '🏆 CTF Event',
+          label: 'CTF Event',
+          Icon: TrophyIcon,
           cardBg: 'bg-[#28223B]',
           cardBorder: 'border-[#433963]',
           badgeClass: 'bg-violet-950/80 text-violet-300 border-violet-700/60',
@@ -72,7 +93,8 @@ export default function NewsCard({
           takeawayLabel: 'text-violet-300',
         },
         CVE_SECURITY: {
-          label: '🔥 Security Alert',
+          label: 'Security Alert',
+          Icon: FlameIcon,
           cardBg: 'bg-[#332224]',
           cardBorder: 'border-[#54363A]',
           badgeClass: 'bg-rose-950/80 text-rose-300 border-rose-700/60',
@@ -80,7 +102,8 @@ export default function NewsCard({
           takeawayLabel: 'text-rose-300',
         },
         DEV_CLOUD: {
-          label: '☁️ Dev & Cloud',
+          label: 'Dev & Cloud',
+          Icon: CloudIcon,
           cardBg: 'bg-[#1E2938]',
           cardBorder: 'border-[#31455E]',
           badgeClass: 'bg-sky-950/80 text-sky-300 border-sky-700/60',
@@ -89,6 +112,7 @@ export default function NewsCard({
         },
       }[item.category] || {
         label: item.category,
+        Icon: null,
         cardBg: 'bg-[#2A263A]',
         cardBorder: 'border-[#3E3852]',
         badgeClass: 'bg-[#37324A] text-[#D8D2E7] border-[#4A4462]',
@@ -97,7 +121,8 @@ export default function NewsCard({
       }
     : {
         AI_FREE: {
-          label: '🎁 Free AI & Credits',
+          label: 'Free AI & Credits',
+          Icon: GiftIcon,
           cardBg: 'bg-[#DFECE6]',
           cardBorder: 'border-[#B8D8CA]',
           badgeClass: 'bg-[#C8E0D5] text-[#1E4D3B] border-[#A8CEBC]',
@@ -105,7 +130,8 @@ export default function NewsCard({
           takeawayLabel: 'text-[#1E4D3B]',
         },
         CTF_COMPETITION: {
-          label: '🏆 CTF Event',
+          label: 'CTF Event',
+          Icon: TrophyIcon,
           cardBg: 'bg-[#E6E1F0]',
           cardBorder: 'border-[#C8BFE0]',
           badgeClass: 'bg-[#D6CDE7] text-[#3D2E5E] border-[#BDB2D6]',
@@ -113,7 +139,8 @@ export default function NewsCard({
           takeawayLabel: 'text-[#3D2E5E]',
         },
         CVE_SECURITY: {
-          label: '🔥 Security Alert',
+          label: 'Security Alert',
+          Icon: FlameIcon,
           cardBg: 'bg-[#F2E2DA]',
           cardBorder: 'border-[#E0C2B4]',
           badgeClass: 'bg-[#E8CFC2] text-[#5C2E1B] border-[#D9B7A6]',
@@ -121,7 +148,8 @@ export default function NewsCard({
           takeawayLabel: 'text-[#5C2E1B]',
         },
         DEV_CLOUD: {
-          label: '☁️ Dev & Cloud',
+          label: 'Dev & Cloud',
+          Icon: CloudIcon,
           cardBg: 'bg-[#DEE9F2]',
           cardBorder: 'border-[#B9D0E4]',
           badgeClass: 'bg-[#C7DCED] text-[#1B4366] border-[#A6C7E0]',
@@ -130,12 +158,15 @@ export default function NewsCard({
         },
       }[item.category] || {
         label: item.category,
+        Icon: null,
         cardBg: 'bg-[#EDE8DF]',
         cardBorder: 'border-[#D2C9B8]',
         badgeClass: 'bg-[#DCD5C9] text-[#2A2623] border-[#CEC5B4]',
         takeawayBox: 'bg-[#EFECE6]/90 border border-black/5 text-[#3A3530]',
         takeawayLabel: 'text-[#2A2623]',
       };
+
+  const CategoryIcon = categoryMeta.Icon;
 
   const cardBorderClass = isBreaking
     ? isDusk
@@ -152,9 +183,10 @@ export default function NewsCard({
       <div className="flex items-center justify-between gap-2 mb-3">
         <div className="flex items-center gap-1.5 flex-wrap">
           <span
-            className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold border shadow-2xs ${categoryMeta.badgeClass}`}
+            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border shadow-2xs ${categoryMeta.badgeClass}`}
           >
-            {categoryMeta.label}
+            {CategoryIcon && <CategoryIcon className="w-3.5 h-3.5 shrink-0" />}
+            <span>{categoryMeta.label}</span>
           </span>
 
           {isBreaking && (
@@ -176,7 +208,7 @@ export default function NewsCard({
 
           {countdown && (
             <span
-              className={`inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold border ${
+              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold border ${
                 countdown === 'Live Now'
                   ? isDusk
                     ? 'bg-rose-950/70 text-rose-200 border-rose-700/60 animate-pulse shadow-xs'
@@ -186,7 +218,8 @@ export default function NewsCard({
                   : 'bg-amber-200/90 text-amber-950 border-amber-300 shadow-xs'
               }`}
             >
-              ⏳ {countdown}
+              <HourglassIcon className="w-3 h-3 shrink-0" />
+              <span>{countdown}</span>
             </span>
           )}
 
@@ -206,7 +239,8 @@ export default function NewsCard({
               }`}
               aria-label="Toggle Thai Translation"
             >
-              <span>🇹🇭 TH</span>
+              <GlobeIcon className="w-3 h-3 shrink-0" />
+              <span>TH</span>
             </motion.button>
           )}
         </div>
@@ -244,7 +278,8 @@ export default function NewsCard({
         <div
           className={`flex items-center gap-1.5 text-xs font-bold tracking-tight mb-1.5 ${categoryMeta.takeawayLabel}`}
         >
-          <span>{isThai ? '💡 สรุปสั้นๆ ว่าทำไมควรรู้' : '💡 Quick Takeaway'}</span>
+          <LightbulbIcon className="w-3.5 h-3.5 shrink-0" />
+          <span>{isThai ? 'สรุปสั้นๆ ว่าทำไมควรรู้' : 'Quick Takeaway'}</span>
         </div>
         <p className="text-xs sm:text-[13px] font-medium leading-relaxed">
           {isThai && item.actionable_value_th ? item.actionable_value_th : item.actionable_value}
@@ -271,7 +306,8 @@ export default function NewsCard({
                 isDusk ? 'text-[#F2EFFA]' : 'text-[#2A2623]'
               }`}
             >
-              <span>🧠 ศัพท์เทคนิคในข่าวนี้</span>
+              <BrainIcon className="w-3.5 h-3.5 shrink-0" />
+              <span>ศัพท์เทคนิคในข่าวนี้</span>
             </div>
             <ul className="space-y-1.5 text-xs">
               {item.tech_terms_th.map((termObj, idx) => (

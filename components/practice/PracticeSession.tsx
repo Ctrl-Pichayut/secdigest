@@ -11,6 +11,7 @@ import type { SessionMode } from '@/lib/practice/types';
 import { useFeedback } from '@/lib/ctf/feedback';
 import { Exercise, KIND_LABEL } from './exercises';
 import { GoalBar, LangChip, palette } from './ui';
+import { CheckIcon, LeafIcon, PartyIcon, StarIcon, TargetIcon, TrophyIcon } from '@/components/icons';
 
 interface QueueItem extends SessionItem {
   /** True for the second attempt at a card missed earlier in this session. */
@@ -165,7 +166,9 @@ export default function PracticeSession({
             >
               {stats.reviewed === 0 ? (
                 <div className="text-center space-y-2 pt-10">
-                  <div className="text-4xl">🌿</div>
+                  <div className={`flex justify-center ${isDusk ? 'text-emerald-300' : 'text-emerald-800'}`}>
+                    <LeafIcon className="w-10 h-10" />
+                  </div>
                   <h2 className={`text-xl font-black ${p.strong}`}>Nothing to practice right now</h2>
                   <p className={`text-sm ${p.muted}`}>Everything is scheduled for later. Come back tomorrow.</p>
                 </div>
@@ -173,12 +176,18 @@ export default function PracticeSession({
                 <div className="space-y-5">
                   <div className="text-center space-y-1.5">
                     <motion.div
-                      className="text-5xl"
+                      className={`flex justify-center ${isDusk ? 'text-amber-300' : 'text-amber-700'}`}
                       initial={{ scale: 0, rotate: -20 }}
                       animate={{ scale: 1, rotate: 0 }}
                       transition={{ type: 'spring', stiffness: 260, damping: 14 }}
                     >
-                      {stats.correct === stats.reviewed ? '🏆' : stats.correct / stats.reviewed >= 0.6 ? '🎉' : '💪'}
+                      {stats.correct === stats.reviewed ? (
+                        <TrophyIcon className="w-12 h-12" />
+                      ) : stats.correct / stats.reviewed >= 0.6 ? (
+                        <PartyIcon className="w-12 h-12" />
+                      ) : (
+                        <StarIcon className="w-12 h-12" />
+                      )}
                     </motion.div>
                     <h2 className={`text-2xl font-black tracking-tight ${p.strong}`}>Session done</h2>
                     <p className={`text-sm ${p.muted}`}>
@@ -190,9 +199,12 @@ export default function PracticeSession({
                   <div className={`rounded-2xl p-4 border space-y-2.5 ${p.panel}`}>
                     <div className={`flex items-center justify-between text-xs font-bold ${p.strong}`}>
                       <span>This week</span>
-                      <span className={p.muted}>
-                        {Math.min(weekSessions, weeklyGoal)} of {weeklyGoal} sessions
-                        {weekSessions >= weeklyGoal && ' · goal reached 🎯'}
+                      <span className={`inline-flex items-center gap-1 ${p.muted}`}>
+                        <span>
+                          {Math.min(weekSessions, weeklyGoal)} of {weeklyGoal} sessions
+                          {weekSessions >= weeklyGoal && ' · goal reached'}
+                        </span>
+                        {weekSessions >= weeklyGoal && <TargetIcon className="w-3.5 h-3.5 shrink-0" />}
                       </span>
                     </div>
                     <GoalBar done={weekSessions} goal={weeklyGoal} isDusk={isDusk} />
@@ -263,7 +275,16 @@ export default function PracticeSession({
                     animate={{ opacity: 1, y: 0 }}
                     className={`rounded-2xl p-3.5 border scroll-mb-40 ${answer ? p.good : p.bad}`}
                   >
-                    <div className="text-sm font-black mb-1">{answer ? 'Correct ✓' : 'Not quite'}</div>
+                    <div className="flex items-center gap-1.5 text-sm font-black mb-1">
+                      {answer ? (
+                        <>
+                          <span>Correct</span>
+                          <CheckIcon className="w-4 h-4 shrink-0" />
+                        </>
+                      ) : (
+                        'Not quite'
+                      )}
+                    </div>
                     <p className="text-[13px] leading-relaxed font-medium">{current.card.explanation}</p>
                   </motion.div>
                 )}

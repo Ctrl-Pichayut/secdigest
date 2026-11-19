@@ -184,7 +184,7 @@ export const WRITEUPS: Writeup[] = [
       'Reading the nibbles the "obvious" way (no complement) gave V B E <control>... — close-but-wrong, which was itself the clue that a nibble-arithmetic rule was in play.',
     ],
     takeaways: [
-      'A file that "looks like Base64" → decode it first, but treat the result as another layer, not the answer.',
+      'A file that "looks like Base64" — decode it first, but treat the result as another layer, not the answer.',
       'A suspiciously tiny alphabet is a giveaway. 16 symbols = nibbles; two letters per group = one byte.',
       'The most common byte is almost always the space (0x20). Compare it to the top symbol to reveal the transform.',
       'Any cipher with no key is broken by design — frequency analysis and word patterns finish the job.',
@@ -284,10 +284,9 @@ export function getWriteup(slug: string): Writeup | undefined {
 // Per-category visual accents, in the app's paper/dusk language.
 export const CATEGORY_ACCENT: Record<
   CtfCategory,
-  { emoji: string; label: string; paper: string; dusk: string; paperSoft: string; duskSoft: string }
+  { label: string; paper: string; dusk: string; paperSoft: string; duskSoft: string }
 > = {
   Web: {
-    emoji: '🕸️',
     label: 'Web',
     paper: 'bg-[#DEE9F2] border-[#B9D0E4] text-[#1B4366]',
     dusk: 'bg-[#1E2938] border-[#31455E] text-sky-300',
@@ -295,7 +294,6 @@ export const CATEGORY_ACCENT: Record<
     duskSoft: 'bg-sky-950/80 text-sky-300 border-sky-700/60',
   },
   Crypto: {
-    emoji: '🔐',
     label: 'Crypto',
     paper: 'bg-[#E6E1F0] border-[#C8BFE0] text-[#3D2E5E]',
     dusk: 'bg-[#28223B] border-[#433963] text-violet-300',
@@ -303,7 +301,6 @@ export const CATEGORY_ACCENT: Record<
     duskSoft: 'bg-violet-950/80 text-violet-300 border-violet-700/60',
   },
   Pwn: {
-    emoji: '💥',
     label: 'Pwn',
     paper: 'bg-[#F2E2DA] border-[#E0C2B4] text-[#5C2E1B]',
     dusk: 'bg-[#332224] border-[#54363A] text-rose-300',

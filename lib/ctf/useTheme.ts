@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useSyncExternalStore } from 'react';
 
 export type Theme = 'paper' | 'dusk';
 
@@ -10,22 +10,32 @@ export type Theme = 'paper' | 'dusk';
  * theme anywhere in the app updates every mounted component at once (home
  * feed, Solved CTF list, write-up pages). Mirrors the body background / meta
  * theme-color behaviour app-wide.
+ *
+ * Uses useSyncExternalStore with a fixed 'paper' server snapshot and hydrates
+ * from localStorage inside an effect so SSR and the initial client hydration
+ * render always agree (avoiding React hydration errors #418/#423).
  */
 
 const KEY = 'secdigest_theme';
+const SERVER_SNAPSHOT: Theme = 'paper';
 
-let current: Theme = 'paper';
+let current: Theme = SERVER_SNAPSHOT;
 let hydrated = false;
 const listeners = new Set<() => void>();
 
+function emit() {
+  listeners.forEach((fn) => fn());
+}
+
 function readInitial(): Theme {
+  if (typeof window === 'undefined') return SERVER_SNAPSHOT;
   try {
-    const saved = localStorage.getItem(KEY);
+    const saved = window.localStorage.getItem(KEY);
     if (saved === 'dusk' || saved === 'paper') return saved;
   } catch {
     // ignore storage access errors (private mode, etc.)
   }
-  return 'paper';
+  return SERVER_SNAPSHOT;
 }
 
 function applyChrome(theme: Theme) {
@@ -39,42 +49,67 @@ function applyChrome(theme: Theme) {
   if (meta) meta.setAttribute('content', bg);
 }
 
+function onStorage(e: StorageEvent) {
+  if (e.key !== KEY && e.key !== null) return;
+  const next: Theme = e.newValue === 'dusk' ? 'dusk' : 'paper';
+  hydrated = true;
+  if (next !== current) {
+    current = next;
+    applyChrome(current);
+    emit();
+  }
+}
+
+function subscribe(listener: () => void) {
+  listeners.add(listener);
+  if (listeners.size === 1 && typeof window !== 'undefined') {
+    window.addEventListener('storage', onStorage);
+  }
+  return () => {
+    listeners.delete(listener);
+    if (listeners.size === 0 && typeof window !== 'undefined') {
+      window.removeEventListener('storage', onStorage);
+    }
+  };
+}
+
+function getSnapshot(): Theme {
+  return current;
+}
+
+function getServerSnapshot(): Theme {
+  return SERVER_SNAPSHOT;
+}
+
+function ensureHydrated() {
+  if (hydrated) return;
+  hydrated = true;
+  const saved = readInitial();
+  applyChrome(saved);
+  if (saved !== current) {
+    current = saved;
+    emit();
+  }
+}
+
 function setTheme(next: Theme) {
+  hydrated = true;
   current = next;
   try {
-    localStorage.setItem(KEY, next);
+    window.localStorage.setItem(KEY, next);
   } catch {
     // ignore
   }
   applyChrome(next);
-  listeners.forEach((fn) => fn());
+  emit();
 }
 
 export function useTheme() {
-  const [, force] = useState(0);
+  const theme = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 
-  // Hydrate from storage once, app-wide, then keep chrome in sync.
+  // Hydrate from localStorage once after mount so initial client render matches SSR.
   useEffect(() => {
-    if (!hydrated) {
-      hydrated = true;
-      current = readInitial();
-      applyChrome(current);
-      listeners.forEach((fn) => fn());
-    }
-    const fn = () => force((n) => n + 1);
-    listeners.add(fn);
-    const onStorage = (e: StorageEvent) => {
-      if (e.key === KEY && (e.newValue === 'dusk' || e.newValue === 'paper')) {
-        current = e.newValue;
-        applyChrome(current);
-        fn();
-      }
-    };
-    window.addEventListener('storage', onStorage);
-    return () => {
-      listeners.delete(fn);
-      window.removeEventListener('storage', onStorage);
-    };
+    ensureHydrated();
   }, []);
 
   const toggle = useCallback(() => {
@@ -83,5 +118,5 @@ export function useTheme() {
 
   const set = useCallback((t: Theme) => setTheme(t), []);
 
-  return { theme: current, isDusk: current === 'dusk', toggle, set };
+  return { theme, isDusk: theme === 'dusk', toggle, set };
 }

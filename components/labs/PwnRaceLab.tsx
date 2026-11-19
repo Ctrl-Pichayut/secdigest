@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { FeedbackBar, Hint, LabButton, StageTracker, TermLog, WinBanner, type LogLine } from './labUi';
+import { ArrowRightIcon, FlagCheckeredIcon, PlayIcon, RotateCcwIcon } from './icons';
 import { useProgressReporter, type LabStatus } from '@/lib/ctf/progress';
 import { useFeedback } from '@/lib/ctf/feedback';
 
@@ -15,7 +16,15 @@ import { useFeedback } from '@/lib/ctf/feedback';
 
 const FLAG = 'STDIO2026{2261d535-80f4-4369-a06b-27db4167ca08_[TEAMHASH]}';
 
-const STAGES = ['Arm WAKE at depth 0', 'Win the race: depth → 1 while armed', 'Submit the name → shell + flag'];
+const STAGES: React.ReactNode[] = [
+  'Arm WAKE at depth 0',
+  <>
+    Win the race: depth <ArrowRightIcon className="inline-block w-3 h-3 align-[-2px] mx-0.5" /> 1 while armed
+  </>,
+  <>
+    Submit the name <ArrowRightIcon className="inline-block w-3 h-3 align-[-2px] mx-0.5" /> shell + flag
+  </>,
+];
 
 // One console panel, lifted OUT of the parent render so it is not recreated on
 // every state change (which would also kill its tap animations).
@@ -60,7 +69,14 @@ function Console({
           WAKE
         </LabButton>
         <LabButton onClick={onSubmit} disabled={busy || !hasPrompt} tone={hasPrompt ? 'primary' : 'neutral'} isDusk={isDusk}>
-          {hasPrompt ? 'submit name ▸' : 'name…'}
+          {hasPrompt ? (
+            <>
+              submit name
+              <PlayIcon className="w-3 h-3 shrink-0" />
+            </>
+          ) : (
+            'name…'
+          )}
         </LabButton>
       </div>
       {hasPrompt && (
@@ -142,7 +158,7 @@ export default function PwnRaceLab({ isDusk, slug = 'pwn-race' }: { isDusk: bool
         cue('step');
         push([
           { tone: 'in', text: `[${who}] DIVE` },
-          { tone: 'plain', text: `    shared session depth → ${nd}${promptOwner ? `  (while ${promptOwner}'s name prompt is still open!)` : ''}` },
+          { tone: 'plain', text: `    shared session depth -> ${nd}${promptOwner ? `  (while ${promptOwner}'s name prompt is still open!)` : ''}` },
         ]);
       }
       return nd;
@@ -223,7 +239,7 @@ export default function PwnRaceLab({ isDusk, slug = 'pwn-race' }: { isDusk: bool
     if (cancelled.current) return;
     cue('step');
     setDepth(1);
-    push([{ tone: 'in', text: '[A] DIVE' }, { tone: 'plain', text: '    shared depth → 1  ← the race: moved while B still waits' }]);
+    push([{ tone: 'in', text: '[A] DIVE' }, { tone: 'plain', text: '    shared depth -> 1  <- the race: moved while B still waits' }]);
 
     await wait(1100);
     if (cancelled.current) return;
@@ -233,7 +249,7 @@ export default function PwnRaceLab({ isDusk, slug = 'pwn-race' }: { isDusk: bool
     setPromptOwner(null);
     push([
       { tone: 'in', text: '[B] submit name "tester"' },
-      { tone: 'ok', text: '    kick misses → BusyBox shell as user1' },
+      { tone: 'ok', text: '    kick misses -> BusyBox shell as user1' },
       { tone: 'in', text: '    ~ $ cat /home/user1/flag1' },
       { tone: 'flag', text: '    ' + FLAG },
     ]);
@@ -251,8 +267,15 @@ export default function PwnRaceLab({ isDusk, slug = 'pwn-race' }: { isDusk: bool
         <Hint isDusk={isDusk} swapKey={current}>
           {current === 0 ? (
             <>
-              The naive path (SLEEP → DIVE → DIVE → WAKE) is rejected. Win by splitting the check from the use:{' '}
-              <b>A: SLEEP → B: WAKE → A: DIVE → B: submit name</b>. Or hit auto-solve to watch it.
+              The naive path (SLEEP <ArrowRightIcon className="inline-block w-3 h-3 align-[-2px] mx-0.5" /> DIVE{' '}
+              <ArrowRightIcon className="inline-block w-3 h-3 align-[-2px] mx-0.5" /> DIVE{' '}
+              <ArrowRightIcon className="inline-block w-3 h-3 align-[-2px] mx-0.5" /> WAKE) is rejected. Win by splitting the check from the use:{' '}
+              <b>
+                A: SLEEP <ArrowRightIcon className="inline-block w-3 h-3 align-[-2px] mx-0.5" /> B: WAKE{' '}
+                <ArrowRightIcon className="inline-block w-3 h-3 align-[-2px] mx-0.5" /> A: DIVE{' '}
+                <ArrowRightIcon className="inline-block w-3 h-3 align-[-2px] mx-0.5" /> B: submit name
+              </b>
+              . Or hit auto-solve to watch it.
             </>
           ) : current === 1 ? (
             <>
@@ -335,10 +358,12 @@ export default function PwnRaceLab({ isDusk, slug = 'pwn-race' }: { isDusk: bool
 
       <div className="flex items-center gap-2">
         <LabButton onClick={autoSolve} disabled={busy} tone="primary" isDusk={isDusk}>
-          ▶ Auto-solve (watch the race)
+          <PlayIcon className="w-3.5 h-3.5 shrink-0" />
+          Auto-solve (watch the race)
         </LabButton>
         <LabButton onClick={reset} disabled={busy} isDusk={isDusk}>
-          ↺ Reset
+          <RotateCcwIcon className="w-3.5 h-3.5 shrink-0" />
+          Reset
         </LabButton>
       </div>
 
@@ -349,15 +374,16 @@ export default function PwnRaceLab({ isDusk, slug = 'pwn-race' }: { isDusk: bool
 
       {/* the race, in one picture */}
       <div className={`rounded-2xl p-3.5 border ${isDusk ? 'bg-[#161320]/60 border-[#342F46]' : 'bg-[#EFECE6]/80 border-[#D2C9B8]'}`}>
-        <div className={`text-[11px] font-bold mb-2 ${isDusk ? 'text-[#D4CDE4]' : 'text-[#443E38]'}`}>
-          🏁 The race, in one picture
+        <div className={`flex items-center gap-1.5 text-[11px] font-bold mb-2 ${isDusk ? 'text-[#D4CDE4]' : 'text-[#443E38]'}`}>
+          <FlagCheckeredIcon className="w-3.5 h-3.5 shrink-0" />
+          <span>The race, in one picture</span>
         </div>
         <div className="rounded-2xl border border-[#2b2838] bg-[#12101a] text-[#d7d2e6] font-mono text-[11px] leading-relaxed p-3.5 overflow-x-auto space-y-0.5">
-          <div className="text-[#6f6a85]">time ──▸</div>
-          <div className="text-[#d7d2e6]">A:  SLEEP ──── DIVE ───────────────▸ idle</div>
-          <div className="text-[#d7d2e6]">B:  ──── WAKE ──────── submit &quot;tester&quot; ─▸ shell</div>
+          <div className="text-[#6f6a85]">time ──&gt;</div>
+          <div className="text-[#d7d2e6]">A:  SLEEP ──── DIVE ───────────────&gt; idle</div>
+          <div className="text-[#d7d2e6]">B:  ──── WAKE ──────── submit &quot;tester&quot; ─&gt; shell</div>
           <div className="text-[#6f6a85]">         └ check passes      └ depth now 1, kick misses</div>
-          <div className="text-[#6f6a85]">    depth 0 (check) ───────▸ depth 1 (use)</div>
+          <div className="text-[#6f6a85]">    depth 0 (check) ───────&gt; depth 1 (use)</div>
         </div>
       </div>
     </div>

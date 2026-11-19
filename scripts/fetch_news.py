@@ -120,20 +120,22 @@ def fetch_cisa_kev() -> List[Dict[str, Any]]:
         resp = requests.get(url, timeout=15)
         resp.raise_for_status()
         data = resp.json()
-        vulnerabilities = data.get("vulnerabilities", [])
+        vulnerabilities = (data.get("vulnerabilities") or []) if isinstance(data, dict) else []
 
         cutoff_date = (datetime.now(timezone.utc) - timedelta(days=7)).strftime("%Y-%m-%d")
         for v in vulnerabilities:
-            date_added = v.get("dateAdded", "")
+            if not isinstance(v, dict):
+                continue
+            date_added = str(v.get("dateAdded") or "").strip()
             if date_added >= cutoff_date:
-                cve_id = v.get("cveID", "").strip()
+                cve_id = str(v.get("cveID") or "").strip()
                 if not cve_id:
                     continue
-                vuln_name = v.get("vulnerabilityName", "").strip()
-                vendor = v.get("vendorProject", "").strip()
-                product = v.get("product", "").strip()
-                short_desc = v.get("shortDescription", "").strip()
-                req_action = v.get("requiredAction", "").strip()
+                vuln_name = str(v.get("vulnerabilityName") or "").strip()
+                vendor = str(v.get("vendorProject") or "").strip()
+                product = str(v.get("product") or "").strip()
+                short_desc = str(v.get("shortDescription") or "").strip()
+                req_action = str(v.get("requiredAction") or "").strip()
 
                 title = f"{cve_id}: {vuln_name or f'{vendor} {product} Exploit'}"
                 summary = (
@@ -165,30 +167,35 @@ def fetch_openrouter_free_models() -> List[Dict[str, Any]]:
         resp = requests.get(url, timeout=15)
         resp.raise_for_status()
         data = resp.json()
-        models = data.get("data", [])
+        models = (data.get("data") or []) if isinstance(data, dict) else []
 
         for m in models:
-            model_id = m.get("id", "")
-            if model_id.endswith(":free"):
-                name = m.get("name") or model_id
-                desc = m.get("description") or ""
-                ctx = m.get("context_length")
-                architecture = m.get("architecture", {})
-                modality = architecture.get("modality", "text")
+            if not isinstance(m, dict):
+                continue
+            model_id = str(m.get("id") or "").strip()
+            if not model_id or not model_id.endswith(":free"):
+                continue
+            name = str(m.get("name") or "").strip() or model_id
+            desc = str(m.get("description") or "")
+            ctx = m.get("context_length")
+            architecture = m.get("architecture") or {}
+            if not isinstance(architecture, dict):
+                architecture = {}
+            modality = architecture.get("modality") or "text"
 
-                summary = (
-                    f"Model: {name} ({model_id})\n"
-                    f"Context Window: {ctx} tokens | Modality: {modality}\n"
-                    f"Description: {desc[:400]}"
-                )
-                items.append({
-                    "source_id": f"openrouter_{model_id}",
-                    "category": "AI_FREE",
-                    "title": f"Free Model: {name}",
-                    "url": f"https://openrouter.ai/{model_id}",
-                    "raw_context": summary,
-                    "event_start_date": None,
-                })
+            summary = (
+                f"Model: {name} ({model_id})\n"
+                f"Context Window: {ctx} tokens | Modality: {modality}\n"
+                f"Description: {desc[:400]}"
+            )
+            items.append({
+                "source_id": f"openrouter_{model_id}",
+                "category": "AI_FREE",
+                "title": f"Free Model: {name}",
+                "url": f"https://openrouter.ai/{model_id}",
+                "raw_context": summary,
+                "event_start_date": None,
+            })
         logger.info(f"OpenRouter: Fetched {len(items)} free models.")
     except Exception as e:
         logger.error(f"Failed to fetch OpenRouter models: {e}")
@@ -213,8 +220,8 @@ def fetch_hacker_news() -> List[Dict[str, Any]]:
         resp = requests.get(url, params=params, timeout=15)
         resp.raise_for_status()
         data = resp.json()
-        hits = data.get("hits", [])
-        nb_hits = data.get("nbHits")
+        hits = (data.get("hits") or []) if isinstance(data, dict) else []
+        nb_hits = data.get("nbHits") if isinstance(data, dict) else None
         if isinstance(nb_hits, int) and nb_hits > len(hits):
             logger.warning(
                 "Hacker News: Algolia returned %d of %d matching stories (truncated by hitsPerPage).",
@@ -222,7 +229,10 @@ def fetch_hacker_news() -> List[Dict[str, Any]]:
                 nb_hits,
             )
 
-        valid_hits = [h for h in hits if str(h.get("objectID", "")).strip()]
+        valid_hits = [
+            h for h in hits
+            if isinstance(h, dict) and str(h.get("objectID") or "").strip()
+        ]
         top_hits = sorted(
             valid_hits,
             key=lambda h: h.get("points") or 0,
@@ -230,12 +240,14 @@ def fetch_hacker_news() -> List[Dict[str, Any]]:
         )[:30]
 
         for h in top_hits:
-            obj_id = str(h.get("objectID", "")).strip()
-            title = h.get("title") or ""
-            story_text = h.get("story_text") or ""
+            obj_id = str(h.get("objectID") or "").strip()
+            if not obj_id:
+                continue
+            title = str(h.get("title") or "")
+            story_text = str(h.get("story_text") or "")
             search_corpus = f"{title} {story_text}"
 
-            story_url = h.get("url") or f"https://news.ycombinator.com/item?id={obj_id}"
+            story_url = str(h.get("url") or "").strip() or f"https://news.ycombinator.com/item?id={obj_id}"
             points = h.get("points") or 0
             comments = h.get("num_comments") or 0
 
@@ -253,8 +265,6 @@ def fetch_hacker_news() -> List[Dict[str, Any]]:
                 re.IGNORECASE,
             ):
                 cat = "CVE_SECURITY"
-            elif re.search(r"\b(llm|gpt|ai|claude|gemini)\b", search_corpus, re.IGNORECASE):
-                cat = "DEV_CLOUD"
             else:
                 cat = "DEV_CLOUD"
 
@@ -459,27 +469,42 @@ def fetch_ctftime(force_ctf: bool = False) -> List[Dict[str, Any]]:
     try:
         resp = requests.get(url, headers=headers, timeout=15)
         resp.raise_for_status()
-        events = resp.json()
+        raw_events = resp.json()
+        events = raw_events if isinstance(raw_events, list) else []
 
         for ev in events:
-            event_id = str(ev.get("id", "")).strip()
+            if not isinstance(ev, dict):
+                continue
+            event_id = str(ev.get("id") or "").strip()
             if not event_id:
                 continue
 
-            title = ev.get("title", "").strip()
+            title = str(ev.get("title") or "").strip()
             start_date = ev.get("start")
             finish_date = ev.get("finish")
-            ctf_url = ev.get("url") or ev.get("ctftime_url") or f"https://ctftime.org/event/{event_id}"
-            format_type = ev.get("format", "Jeopardy")
-            weight = ev.get("weight", 0.0)
-            organizers = ", ".join([org.get("name", "") for org in ev.get("organizers", [])])
+            ctf_url = (
+                str(ev.get("url") or "").strip()
+                or str(ev.get("ctftime_url") or "").strip()
+                or f"https://ctftime.org/event/{event_id}"
+            )
+            format_type = ev.get("format") or "Jeopardy"
+            weight = ev.get("weight") if ev.get("weight") is not None else 0.0
+            organizers_raw = ev.get("organizers") or []
+            if not isinstance(organizers_raw, list):
+                organizers_raw = []
+            organizers = ", ".join(
+                str(org.get("name") or "").strip()
+                for org in organizers_raw
+                if isinstance(org, dict) and str(org.get("name") or "").strip()
+            )
+            description = str(ev.get("description") or "")
 
             summary = (
                 f"CTF Event: {title}\n"
                 f"Start Date: {start_date} | Finish Date: {finish_date}\n"
                 f"Format: {format_type} | Weight: {weight}\n"
                 f"Organizers: {organizers}\n"
-                f"Description: {ev.get('description', '')[:300]}"
+                f"Description: {description[:300]}"
             )
 
             items.append({
@@ -503,25 +528,48 @@ def fetch_ctftime(force_ctf: bool = False) -> List[Dict[str, Any]]:
 def get_existing_source_ids(supabase_client: Client) -> Set[str]:
     """Query existing source_id values from public.seen_sources and public.news_items to prevent reprocessing."""
     existing: Set[str] = set()
+    page_size = 1000
 
     # 1. Query seen_sources table (tracks all fetched candidates including rejected items)
     try:
-        resp = supabase_client.table("seen_sources").select("source_id").execute()
-        for row in (resp.data or []):
-            if "source_id" in row:
-                existing.add(row["source_id"])
+        start = 0
+        while True:
+            resp = (
+                supabase_client.table("seen_sources")
+                .select("source_id")
+                .range(start, start + page_size - 1)
+                .execute()
+            )
+            rows = resp.data or []
+            for row in rows:
+                if "source_id" in row:
+                    existing.add(row["source_id"])
+            if len(rows) < page_size:
+                break
+            start += page_size
         logger.info(f"Retrieved {len(existing)} existing source_ids from public.seen_sources.")
     except Exception as e:
         logger.warning(f"Could not retrieve source_ids from public.seen_sources: {e}")
 
     # 2. Query news_items table as secondary safety
     try:
-        resp = supabase_client.table("news_items").select("source_id").execute()
         news_count = 0
-        for row in (resp.data or []):
-            if "source_id" in row:
-                existing.add(row["source_id"])
-                news_count += 1
+        start = 0
+        while True:
+            resp = (
+                supabase_client.table("news_items")
+                .select("source_id")
+                .range(start, start + page_size - 1)
+                .execute()
+            )
+            rows = resp.data or []
+            for row in rows:
+                if "source_id" in row:
+                    existing.add(row["source_id"])
+                    news_count += 1
+            if len(rows) < page_size:
+                break
+            start += page_size
         logger.info(f"Retrieved {news_count} existing source_ids from public.news_items.")
     except Exception as e:
         logger.warning(f"Could not retrieve existing source_ids from public.news_items: {e}")
@@ -591,6 +639,8 @@ def generate_content_with_fallback(
                 config=config,
             )
             raw_text = (response.text or "").strip()
+            if not raw_text:
+                raise ValueError(f"Model '{model_name}' returned an empty response.")
             if idx > 0:
                 logger.info(
                     "[LLM] Fallback succeeded! Completed request with '%s' (fallback #%d).",
@@ -626,6 +676,7 @@ def generate_content_with_fallback(
                 reason = (
                     "rate-limit/transient" if is_transient
                     else "model-unavailable/config" if is_availability
+                    else "empty response" if "empty response" in err_msg
                     else "unexpected error"
                 )
                 logger.warning(
@@ -703,8 +754,16 @@ Candidate items:
         raw_text = re.sub(r"\s*```$", "", raw_text)
 
     parsed = CuratedDigestResponse.model_validate_json(raw_text)
-    breaking_items = [item for item in parsed.curated_items if item.is_breaking]
-    normal_items = [item for item in parsed.curated_items if not item.is_breaking][:5]
+    seen_source_ids: Set[str] = set()
+    unique_items: List[CuratedNewsItem] = []
+    for item in parsed.curated_items:
+        if item.source_id in seen_source_ids:
+            continue
+        seen_source_ids.add(item.source_id)
+        unique_items.append(item)
+
+    breaking_items = [item for item in unique_items if item.is_breaking]
+    normal_items = [item for item in unique_items if not item.is_breaking][:5]
     curated = (breaking_items + normal_items)[:8]
     breaking_kept = sum(1 for item in curated if item.is_breaking)
     logger.info("Gemini selected %d high-impact items (%d breaking).", len(curated), breaking_kept)
@@ -851,6 +910,10 @@ def main() -> None:
         help="Backfill Thai translations and technical glossaries for existing rows where tldr_th IS NULL",
     )
     args = parser.parse_args()
+
+    if args.dry_run and args.backfill_th:
+        logger.error("--dry-run cannot be combined with --backfill-th.")
+        sys.exit(2)
 
     # Retrieve environment variables
     raw_supabase_url = os.getenv("SUPABASE_URL") or os.getenv("NEXT_PUBLIC_SUPABASE_URL")
