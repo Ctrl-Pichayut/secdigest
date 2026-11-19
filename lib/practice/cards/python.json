@@ -1901,6 +1901,398 @@
     "explanation": "Subtracting two timezone-aware datetime objects returns a timedelta that compares directly with timedelta(days=90). k1 (182 days old) and k2 (120 days old) exceed the 90-day rotation threshold, while k3 is only 31 days old. Auditing IAM access key age helps enforce regular credential rotation."
   },
   {
+    "id": "py-121",
+    "lang": "python",
+    "topic": "Hashing & crypto primitives",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import hashlib\na = hashlib.sha256(b'hello').hexdigest()\nb = hashlib.sha256(b'hello').hexdigest()\nc = hashlib.sha256(b'Hello').hexdigest()\nprint(len(a), a == b, a == c)",
+    "choices": [
+      "64 True False",
+      "32 True False",
+      "64 False False",
+      "64 True True"
+    ],
+    "answer": 0,
+    "explanation": "SHA-256 is deterministic, so identical bytes always produce the same 64-character hex string (32 bytes). Changing even one bit, like 'h' to 'H', completely changes the digest due to the avalanche effect."
+  },
+  {
+    "id": "py-122",
+    "lang": "python",
+    "topic": "Hashing & crypto primitives",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import hashlib\nm = hashlib.md5(b'sec')\ns = hashlib.sha256(b'sec')\nprint(m.digest_size, s.digest_size, len(m.hexdigest()))",
+    "choices": [
+      "16 32 32",
+      "32 64 32",
+      "128 256 32",
+      "16 32 16"
+    ],
+    "answer": 0,
+    "explanation": "digest_size gives the raw digest length in bytes: 16 for MD5 (128 bits) and 32 for SHA-256 (256 bits). Hex encoding doubles the byte count, so MD5's hexdigest is 32 characters long. Prefer SHA-256 over MD5 because MD5 is broken against collisions."
+  },
+  {
+    "id": "py-123",
+    "lang": "python",
+    "topic": "Hashing & crypto primitives",
+    "kind": "output",
+    "prompt": "What happens when this runs?",
+    "code": "import hashlib\nhashlib.sha256('token')",
+    "choices": [
+      "Returns a 64-char hex digest",
+      "Encodes as UTF-8 automatically",
+      "TypeError",
+      "ValueError"
+    ],
+    "answer": 2,
+    "explanation": "Hash functions operate on bytes, not Unicode text, so passing a str raises TypeError. Always encode strings explicitly first with 'token'.encode('utf-8') (or use a b'...' literal).",
+    "raises": "TypeError"
+  },
+  {
+    "id": "py-124",
+    "lang": "python",
+    "topic": "Hashing & crypto primitives",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import hashlib, hmac\nkey, msg = b'k1', b'role=user'\nmac = hmac.new(key, msg, 'sha256').hexdigest()\nraw = hashlib.sha256(key + msg).hexdigest()\nprint(len(mac), mac == raw)",
+    "choices": [
+      "64 False",
+      "64 True",
+      "32 False",
+      "32 True"
+    ],
+    "answer": 0,
+    "explanation": "HMAC-SHA256 outputs a 64-character hex digest, but it differs from sha256(key + msg) because it hashes twice with inner and outer key pads. Plain sha256(key + msg) is vulnerable to length-extension attacks, where an attacker can append data and forge a valid digest without knowing the key."
+  },
+  {
+    "id": "py-125",
+    "lang": "python",
+    "topic": "Hashing & crypto primitives",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import hmac\na = hmac.new(b'key', b'msg', 'sha256').digest()\nb = hmac.new(b'key', b'msg', 'sha256').digest()\nc = hmac.new(b'key', b'alt', 'sha256').digest()\nprint(hmac.compare_digest(a, b), hmac.compare_digest(a, c))",
+    "choices": [
+      "True False",
+      "0 1",
+      "True None",
+      "TypeError"
+    ],
+    "answer": 0,
+    "explanation": "hmac.compare_digest() returns True or False just like ==, but it inspects every byte so execution time does not depend on where a mismatch occurs. Using == on MACs or tokens leaks timing clues that let attackers guess secrets byte by byte."
+  },
+  {
+    "id": "py-126",
+    "lang": "python",
+    "topic": "Hashing & crypto primitives",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import secrets\ntok = secrets.token_hex(16)\nraw = secrets.token_bytes(16)\nprint(len(tok), len(raw), isinstance(tok, str))",
+    "choices": [
+      "32 16 True",
+      "16 16 True",
+      "32 32 True",
+      "32 16 False"
+    ],
+    "answer": 0,
+    "explanation": "secrets.token_hex(16) draws 16 random bytes (128 bits of entropy) from the OS CSPRNG and encodes them as a 32-character hex string. Passing 16 means 16 bytes, not 16 hex characters, which gives enough entropy for session tokens and reset links."
+  },
+  {
+    "id": "py-127",
+    "lang": "python",
+    "topic": "Hashing & crypto primitives",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import hashlib\nsalt = b'fixed-salt-16b'\nk1 = hashlib.pbkdf2_hmac('sha256', b'pw', salt, 100)\nk2 = hashlib.pbkdf2_hmac('sha256', b'pw', salt, 200)\nk3 = hashlib.pbkdf2_hmac('sha256', b'pw', salt, 100, dklen=16)\nprint(len(k1), len(k3), k1 == k2)",
+    "choices": [
+      "32 16 False",
+      "32 16 True",
+      "64 16 False",
+      "32 32 False"
+    ],
+    "answer": 0,
+    "explanation": "pbkdf2_hmac defaults to the underlying hash size (32 bytes for SHA-256) unless dklen overrides it. Changing the iteration count or salt yields a different key, so you must store both alongside the digest. Use a random per-user salt and >= 600,000 iterations in production."
+  },
+  {
+    "id": "py-128",
+    "lang": "python",
+    "topic": "Hashing & crypto primitives",
+    "kind": "order",
+    "prompt": "Put the lines in order so this Base64-encodes a raw SHA-256 digest and prints 44.",
+    "lines": [
+      "import base64, hashlib",
+      "def b64_sha256_len(text):",
+      "    raw = hashlib.sha256(text.encode('utf-8')).digest()",
+      "    b64 = base64.b64encode(raw).decode('ascii')",
+      "    return len(b64)",
+      "print(b64_sha256_len('hello'))"
+    ],
+    "explanation": "Base64 encodes every 3 bytes into 4 ASCII characters, which is more compact than 64-character hex for a 32-byte SHA-256 digest (such as HTTP SRI hashes). Because 32 leaves remainder 2 when divided by 3, b64encode pads the output with one '=' for 44 characters total.",
+    "expectOutput": "44"
+  },
+  {
+    "id": "py-129",
+    "lang": "python",
+    "topic": "Hashing & crypto primitives",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "def xor(a, b):\n    return bytes(x ^ y for x, y in zip(a, b))\n\npt = b'HI'\nkey = b'\\x20\\x20'\nct = xor(pt, key)\nprint(ct, xor(ct, key))",
+    "choices": [
+      "b'hi' b'HI'",
+      "b'hi' b'hi'",
+      "b'HI' b'hi'",
+      "[104, 105] [72, 73]"
+    ],
+    "answer": 0,
+    "explanation": "Iterating over bytes yields ints, so bytes(x ^ y for x, y in zip(a, b)) XORs two equal-length byte strings cleanly. XOR is its own inverse: applying the same key twice recovers b'HI', which is why reusing a stream key lets attackers XOR two ciphertexts to cancel it out."
+  },
+  {
+    "id": "py-130",
+    "lang": "python",
+    "topic": "Hashing & crypto primitives",
+    "kind": "bug",
+    "prompt": "Password reset tokens generated here can be predicted from PRNG state. Which line is the security bug?",
+    "lines": [
+      "def make_reset_token():",
+      "    prefix = 'rst_'",
+      "    token = str(random.random())[2:]",
+      "    return prefix + token"
+    ],
+    "bugLine": 2,
+    "fixedLine": "    token = secrets.token_hex(16)",
+    "explanation": "random.random() uses Mersenne Twister, a non-cryptographic PRNG whose state can be recovered to predict future tokens. Replace it with secrets.token_hex(16) (or secrets.token_urlsafe()), which draws from the OS cryptographic random source."
+  },
+  {
+    "id": "py-131",
+    "lang": "python",
+    "topic": "Hashing & crypto primitives",
+    "kind": "bug",
+    "prompt": "This webhook signature verifier is vulnerable to a timing side-channel. Which line is the security bug?",
+    "lines": [
+      "def verify_webhook(secret, body, sig_hex):",
+      "    mac = hmac.new(secret, body, 'sha256')",
+      "    expected = mac.hexdigest()",
+      "    return expected == sig_hex"
+    ],
+    "bugLine": 3,
+    "fixedLine": "    return hmac.compare_digest(expected, sig_hex)",
+    "explanation": "Comparing two MAC digests with == short-circuits on the first differing character, leaking timing information an attacker can exploit to forge a valid signature. Use hmac.compare_digest(expected, sig_hex) for constant-time verification."
+  },
+  {
+    "id": "py-132",
+    "lang": "python",
+    "topic": "Hashing & crypto primitives",
+    "kind": "bug",
+    "prompt": "Two users with the same password get identical hashes, aiding precomputation attacks. Which line is the security bug?",
+    "lines": [
+      "def derive_key(password):",
+      "    salt = b'app-static-salt'",
+      "    pw = password.encode('utf-8')",
+      "    dk = hashlib.pbkdf2_hmac('sha256', pw, salt, 600000)",
+      "    return salt.hex() + ':' + dk.hex()"
+    ],
+    "bugLine": 1,
+    "fixedLine": "    salt = secrets.token_bytes(16)",
+    "explanation": "A hardcoded salt lets attackers spot duplicate passwords and build a single lookup table for the entire database. Generate a fresh random salt per user with secrets.token_bytes(16) and store it next to the derived key."
+  },
+  {
+    "id": "py-133",
+    "lang": "python",
+    "topic": "Web requests & URLs",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "from urllib.parse import urlparse\nu = urlparse('https://api.example.com:8443/v1/items?page=2')\nprint(u.scheme, u.netloc, u.hostname)\nprint(u.port, u.path, u.query)",
+    "choices": [
+      "https api.example.com:8443 api.example.com\n8443 /v1/items page=2",
+      "https api.example.com api.example.com\n8443 /v1/items ?page=2",
+      "https api.example.com:8443 api.example.com:8443\n8443 /v1/items page=2",
+      "https api.example.com:8443 api.example.com\nNone /v1/items page=2"
+    ],
+    "answer": 0,
+    "explanation": "urlparse splits a URL into scheme, netloc, path, and query (without the leading '?'). netloc keeps the host and port together, while hostname strips the port and port parses it as an int (or None if omitted)."
+  },
+  {
+    "id": "py-134",
+    "lang": "python",
+    "topic": "Web requests & URLs",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "from urllib.parse import parse_qs\nqs = parse_qs('a=1&b=2&a=3&empty=')\nprint(qs['a'], qs['b'], 'empty' in qs)",
+    "choices": [
+      "['1', '3'] ['2'] False",
+      "3 2 True",
+      "['1', '3'] '2' False",
+      "['1', '3'] ['2'] True"
+    ],
+    "answer": 0,
+    "explanation": "parse_qs maps every query parameter to a list of strings, even when a key appears only once, so duplicate parameters (HTTP Parameter Pollution) stay visible. Blank values like empty= are dropped unless you pass keep_blank_values=True."
+  },
+  {
+    "id": "py-135",
+    "lang": "python",
+    "topic": "Web requests & URLs",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "from urllib.parse import quote, urlencode\nprint(quote('a b/c'))\nprint(quote('a b/c', safe=''))\nprint(urlencode({'q': 'a b', 'n': 1}))",
+    "choices": [
+      "a%20b/c\na%20b%2Fc\nq=a+b&n=1",
+      "a%20b%2Fc\na%20b%2Fc\nq=a%20b&n=1",
+      "a+b/c\na+b%2Fc\nq=a+b&n=1",
+      "a%20b/c\na%20b%2fc\nq=a%20b&n=1"
+    ],
+    "answer": 0,
+    "explanation": "quote() leaves '/' unescaped by default (safe='/'), which can allow path injection if you interpolate user input into a single URL segment; pass safe='' to encode '/' as %2F. urlencode() uses quote_plus by default, turning spaces into '+'."
+  },
+  {
+    "id": "py-136",
+    "lang": "python",
+    "topic": "Web requests & URLs",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "from urllib.parse import urljoin\nbase = 'https://example.com/app/v1/page'\nprint(urljoin(base, '../admin'))\nprint(urljoin(base, '/login'))\nprint(urljoin(base, '//evil.test/x'))",
+    "choices": [
+      "https://example.com/app/admin\nhttps://example.com/login\nhttps://evil.test/x",
+      "https://example.com/app/v1/admin\nhttps://example.com/app/v1/login\nhttps://example.com/evil.test/x",
+      "https://example.com/app/admin\nhttps://example.com/app/v1/login\nhttps://evil.test/x",
+      "https://example.com/admin\nhttps://example.com/login\nhttps://example.com//evil.test/x"
+    ],
+    "answer": 0,
+    "explanation": "urljoin drops the last path segment ('page') before resolving '../admin', while a leading '/' replaces the entire path. A protocol-relative path like '//evil.test/x' even overrides the host, causing SSRF or open redirects if user input reaches urljoin()."
+  },
+  {
+    "id": "py-137",
+    "lang": "python",
+    "topic": "Web requests & URLs",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "from urllib.parse import urlparse\ntarget = 'https://example.com.evil.test/login'\nbad = target.startswith('https://example.com')\nu = urlparse(target)\ngood = u.scheme == 'https' and u.hostname == 'example.com'\nprint(bad, good)",
+    "choices": [
+      "True False",
+      "False False",
+      "True True",
+      "False True"
+    ],
+    "answer": 0,
+    "explanation": "Checking target.startswith('https://example.com') is bypassed by domains like example.com.evil.test (or example.com@evil.test). Always parse the URL with urlparse() and compare u.scheme and u.hostname against an exact allowlist."
+  },
+  {
+    "id": "py-138",
+    "lang": "python",
+    "topic": "Web requests & URLs",
+    "kind": "order",
+    "prompt": "Put the lines in order so this parses raw HTTP headers case-insensitively and prints text/html.",
+    "lines": [
+      "def parse_headers(block):",
+      "    hdrs = {}",
+      "    for line in block.splitlines():",
+      "        name, val = line.split(':', 1)",
+      "        hdrs[name.strip().lower()] = val.strip()",
+      "    return hdrs",
+      "raw = 'Content-Type: text/html\\nX-Req-Id: 42'",
+      "print(parse_headers(raw)['content-type'])"
+    ],
+    "explanation": "HTTP header names are case-insensitive, so normalizing keys with .lower() prevents lookup misses and security check bypasses. Using split(':', 1) ensures colons inside header values (like Host: example.com:8443) stay intact.",
+    "expectOutput": "text/html"
+  },
+  {
+    "id": "py-139",
+    "lang": "python",
+    "topic": "Web requests & URLs",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "from http.cookies import SimpleCookie\nc = SimpleCookie()\nc.load('sid=demo1; HttpOnly; SameSite=Lax')\nm = c['sid']\nprint(m.value, bool(m['httponly']), bool(m['secure']))",
+    "choices": [
+      "demo1 True False",
+      "demo1 True True",
+      "demo1 False False",
+      "KeyError"
+    ],
+    "answer": 0,
+    "explanation": "SimpleCookie parses Set-Cookie headers into Morsel objects with lowercase attribute keys like 'httponly' and 'secure'. Present flags become True while missing ones stay '', so bool(m['secure']) cleanly detects cookies that can leak over plain HTTP."
+  },
+  {
+    "id": "py-140",
+    "lang": "python",
+    "topic": "Web requests & URLs",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import base64, json\nraw = b'{\"sub\":\"u12\"}'\nseg = base64.urlsafe_b64encode(raw).rstrip(b'=').decode()\ntok = 'hdr.' + seg + '.sig'\npart = tok.split('.')[1]\npad = '=' * (-len(part) % 4)\nclaims = json.loads(base64.urlsafe_b64decode(part + pad))\nprint(len(pad), claims['sub'])",
+    "choices": [
+      "2 u12",
+      "0 u12",
+      "1 u12",
+      "ValueError"
+    ],
+    "answer": 0,
+    "explanation": "JWTs strip trailing '=' padding from URL-safe Base64 segments, so Python's urlsafe_b64decode() requires restoring (-len(part) % 4) padding characters first. Remember that decoding a JWT payload only reads its claims; it never verifies the signature."
+  },
+  {
+    "id": "py-141",
+    "lang": "python",
+    "topic": "Web requests & URLs",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "from urllib.parse import unquote, unquote_plus\nraw = '%2e%2e%2fadmin?q=a+b'\nprint(unquote(raw))\nprint(unquote_plus(raw))",
+    "choices": [
+      "../admin?q=a+b\n../admin?q=a b",
+      "../admin?q=a b\n../admin?q=a b",
+      "%2e%2e/admin?q=a+b\n../admin?q=a b",
+      "../admin?q=a+b\n../admin?q=a+b"
+    ],
+    "answer": 0,
+    "explanation": "unquote() decodes percent-encoded bytes like %2e%2e%2f into '../', while unquote_plus() also turns '+' into spaces for form query strings. Always validate paths after decoding (and never decode a second time afterward) so encoded traversal sequences cannot bypass filters."
+  },
+  {
+    "id": "py-142",
+    "lang": "python",
+    "topic": "Web requests & URLs",
+    "kind": "bug",
+    "prompt": "An attacker can forge an admin JWT with an empty signature. Which line is the security bug?",
+    "lines": [
+      "def verify_jwt(token, secret):",
+      "    header, payload = decode_parts(token)",
+      "    if header.get('alg') == 'none':",
+      "        return payload",
+      "    return verify_hs256(token, secret)"
+    ],
+    "bugLine": 3,
+    "fixedLine": "        raise ValueError('alg none not allowed')",
+    "explanation": "Accepting alg: 'none' returns unverified claims without checking any signature, letting anyone forge arbitrary tokens. Reject 'none' and enforce an explicit server-side algorithm allowlist rather than trusting the token header."
+  },
+  {
+    "id": "py-143",
+    "lang": "python",
+    "topic": "Web requests & URLs",
+    "kind": "bug",
+    "prompt": "Passing ?user=' OR '1'='1 dumps every account ID. Which line is the security bug?",
+    "lines": [
+      "def find_user(db, query_str):",
+      "    qs = parse_qs(query_str)",
+      "    name = qs.get('user', [''])[0]",
+      "    cur = db.execute(f\"SELECT id FROM u WHERE name='{name}'\")",
+      "    return cur.fetchall()"
+    ],
+    "bugLine": 3,
+    "fixedLine": "    cur = db.execute('SELECT id FROM u WHERE name=?', (name,))",
+    "explanation": "Interpolating a URL query parameter into SQL with an f-string allows SQL injection because quotes in user input alter the query syntax. Use a parameterized placeholder (?) and pass (name,) separately so the database treats it strictly as data."
+  },
+  {
+    "id": "py-144",
+    "lang": "python",
+    "topic": "Web requests & URLs",
+    "kind": "bug",
+    "prompt": "Passing '123/delete' as user_id hits /users/123/delete instead of one user segment. Which line is the security bug?",
+    "lines": [
+      "def build_user_url(user_id):",
+      "    base = 'https://api.example.com/users/'",
+      "    encoded = urllib.parse.quote(user_id)",
+      "    return base + encoded"
+    ],
+    "bugLine": 2,
+    "fixedLine": "    encoded = urllib.parse.quote(user_id, safe='')",
+    "explanation": "urllib.parse.quote() leaves '/' unescaped by default (safe='/'), so '123/delete' injects an extra path segment into the backend URL. Pass safe='' so '/' is encoded as %2F and stays inside the single user_id segment."
+  },
+  {
     "id": "py-058",
     "lang": "python",
     "topic": "CTF toolbox",

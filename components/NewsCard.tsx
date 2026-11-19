@@ -14,12 +14,14 @@ import { ExternalLink, Bookmark, CheckCircle2 } from 'lucide-react';
 import { NewsItem } from '@/lib/types';
 import {
   BrainIcon,
+  CheckIcon,
   CloudIcon,
   FlameIcon,
   GiftIcon,
   GlobeIcon,
   HourglassIcon,
   LightbulbIcon,
+  ShareIcon,
   TrophyIcon,
   type IconComponent,
 } from '@/components/icons';
@@ -152,6 +154,8 @@ export default function NewsCard({
   // Independent per-card Thai translation state
   const [isThai, setIsThai] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [shareStatus, setShareStatus] = useState<'idle' | 'copied' | 'failed'>('idle');
+  const shareResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const countdown = getCtfCountdown(item.event_start_date);
   const sourceHost = getSourceHost(item.url);
   const relativeAge = mounted ? formatRelativeAge(item.created_at) : null;
@@ -161,6 +165,66 @@ export default function NewsCard({
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  useEffect(() => {
+    return () => {
+      if (shareResetTimerRef.current !== null) {
+        clearTimeout(shareResetTimerRef.current);
+      }
+    };
+  }, []);
+
+  const showShareStatus = (status: 'copied' | 'failed') => {
+    setShareStatus(status);
+    if (shareResetTimerRef.current !== null) {
+      clearTimeout(shareResetTimerRef.current);
+    }
+    shareResetTimerRef.current = setTimeout(() => {
+      setShareStatus('idle');
+      shareResetTimerRef.current = null;
+    }, 1500);
+  };
+
+  const handleShare = async (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.stopPropagation();
+
+    if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+      try {
+        await navigator.share({
+          title: item.title,
+          text: item.tldr,
+          url: item.url,
+        });
+        return;
+      } catch (err: unknown) {
+        const isAbortError =
+          typeof err === 'object' &&
+          err !== null &&
+          'name' in err &&
+          (err as { name?: unknown }).name === 'AbortError';
+        if (isAbortError) {
+          return;
+        }
+      }
+    }
+
+    if (
+      typeof navigator !== 'undefined' &&
+      navigator.clipboard &&
+      typeof navigator.clipboard.writeText === 'function'
+    ) {
+      try {
+        await navigator.clipboard.writeText(`${item.title}\n${item.url}`);
+        showShareStatus('copied');
+        return;
+      } catch {
+        showShareStatus('failed');
+        return;
+      }
+    }
+
+    showShareStatus('failed');
+  };
 
   const isDusk = theme === 'dusk';
 
@@ -637,7 +701,7 @@ export default function NewsCard({
 
       {/* Interactive Action Bar (Clean non-white pills) */}
       <div
-        className={`flex items-center justify-between gap-1.5 sm:gap-2 pt-3 border-t ${
+        className={`flex flex-wrap items-center justify-between gap-1.5 sm:gap-2 pt-3 border-t ${
           isDusk ? 'border-[#433D58]/60' : 'border-[#D2C9B8]'
         }`}
       >
@@ -703,6 +767,46 @@ export default function NewsCard({
             }`}
           />
           <span>{item.is_read ? 'Read' : 'Mark Read'}</span>
+        </motion.button>
+
+        {/* Share Button */}
+        <motion.button
+          type="button"
+          data-testid="share-button"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={handleShare}
+          whileTap={{ scale: 0.92 }}
+          whileHover={{ y: -1 }}
+          className={`inline-flex items-center justify-center gap-1.5 min-h-[44px] min-w-[44px] px-2.5 sm:px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all touch-manipulation cursor-pointer ${focusRingClass} ${
+            shareStatus === 'copied'
+              ? isDusk
+                ? 'bg-emerald-950/70 text-emerald-300 border border-emerald-700/60 font-bold shadow-xs'
+                : 'bg-emerald-200/90 text-emerald-950 border border-emerald-300 font-bold shadow-xs'
+              : shareStatus === 'failed'
+              ? isDusk
+                ? 'bg-rose-950/70 text-rose-200 border border-rose-700/60 font-bold shadow-xs'
+                : 'bg-rose-200/90 text-rose-950 border border-rose-300 font-bold shadow-xs'
+              : isDusk
+              ? 'bg-[#2A263A] text-[#E2DCF0] border border-[#433D58] hover:bg-[#353048] shadow-2xs'
+              : 'bg-[#EFECE6] hover:bg-[#E5DFD3] text-[#4A443E] hover:text-[#2A2623] border border-[#D2C9B8] shadow-2xs'
+          }`}
+          aria-label={`Share ${item.title}`}
+        >
+          {shareStatus === 'copied' ? (
+            <CheckIcon className="w-3.5 h-3.5 shrink-0" />
+          ) : (
+            <ShareIcon className="w-3.5 h-3.5 shrink-0" />
+          )}
+          <span
+            aria-live="polite"
+            className={shareStatus === 'idle' ? 'sr-only' : undefined}
+          >
+            {shareStatus === 'copied'
+              ? 'Link copied'
+              : shareStatus === 'failed'
+              ? 'Copy failed'
+              : ''}
+          </span>
         </motion.button>
 
         {/* Read Post Link */}

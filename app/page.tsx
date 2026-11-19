@@ -23,6 +23,7 @@ import {
   PartyIcon,
   SearchIcon,
   SparkleIcon,
+  SpinnerIcon,
   SunIcon,
   SunsetIcon,
   TrophyIcon,
@@ -52,6 +53,40 @@ interface ClientTimeInfo {
 
 const DEFAULT_GREETING_BADGE = 'DAILY DROP';
 const DEFAULT_SUBTITLE = 'Daily CS, Security & AI Intelligence';
+const WINDOW_STEP_DAYS = 14;
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+const MAX_CONSECUTIVE_EMPTY_PAGES = 2;
+
+function getErrorMessage(err: unknown): string {
+  if (err instanceof Error && err.message) return err.message;
+  if (
+    typeof err === 'object' &&
+    err !== null &&
+    'message' in err &&
+    typeof (err as { message?: unknown }).message === 'string' &&
+    (err as { message: string }).message.length > 0
+  ) {
+    return (err as { message: string }).message;
+  }
+  return 'Unknown error';
+}
+
+function mergeAndSortNewsItems(existing: NewsItem[], incoming: NewsItem[]): NewsItem[] {
+  const byId = new Map<string, NewsItem>();
+  for (const item of existing) {
+    byId.set(item.id, item);
+  }
+  for (const item of incoming) {
+    if (!byId.has(item.id)) {
+      byId.set(item.id, item);
+    }
+  }
+  return Array.from(byId.values()).sort((a, b) => {
+    const readDiff = Number(a.is_read) - Number(b.is_read);
+    if (readDiff !== 0) return readDiff;
+    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+  });
+}
 
 function getClientTimeInfo(now: Date): ClientTimeInfo {
   const hour = now.getHours();
@@ -131,6 +166,11 @@ export default function HomePage() {
   const [hasLoaded, setHasLoaded] = useState<boolean>(false);
   const [refreshing, setRefreshing] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [olderThan, setOlderThan] = useState<string | null>(null);
+  const [windowDays, setWindowDays] = useState<number>(WINDOW_STEP_DAYS);
+  const [loadingOlder, setLoadingOlder] = useState<boolean>(false);
+  const [olderError, setOlderError] = useState<string | null>(null);
+  const [consecutiveEmptyPages, setConsecutiveEmptyPages] = useState<number>(0);
   const [activeFilter, setActiveFilter] = useState<FilterCategory>('ALL');
   const [readDrawerOpen, setReadDrawerOpen] = useState<boolean>(false);
   const [isSearchOpen, setIsSearchOpen] = useState<boolean>(false);
@@ -138,6 +178,7 @@ export default function HomePage() {
   const [debouncedQuery, setDebouncedQuery] = useState<string>('');
   const searchInputRef = useRef<HTMLInputElement>(null);
   const searchToggleRef = useRef<HTMLButtonElement>(null);
+  const feedEpochRef = useRef<number>(0);
 
   // Shared reading-theme store — stays in sync with the Solved CTF pages.
   const { theme, isDusk, toggle: toggleTheme } = useTheme();
@@ -173,16 +214,24 @@ export default function HomePage() {
     [now]
   );
 
-  // Load news items from Supabase
+  // Load recent (last 14 days) or still relevant (unread/bookmarked) items from Supabase
   const loadNews = useCallback(async (isRefresh = false) => {
+    const epoch = ++feedEpochRef.current;
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
     setError(null);
+    setOlderError(null);
+    setLoadingOlder(false);
 
     try {
+      const cutoffIso = new Date(
+        Date.now() - WINDOW_STEP_DAYS * MS_PER_DAY
+      ).toISOString();
+
       const { data, error: sbError } = await supabase
         .from('news_items')
         .select('*')
+        .or(`created_at.gte.${cutoffIso},is_bookmarked.eq.true,is_read.eq.false`)
         .order('is_read', { ascending: true })
         .order('created_at', { ascending: false });
 
@@ -190,18 +239,78 @@ export default function HomePage() {
         throw sbError;
       }
 
+      if (epoch !== feedEpochRef.current) return;
+
       setItems((data as NewsItem[]) || []);
+      setOlderThan(cutoffIso);
+      setWindowDays(WINDOW_STEP_DAYS);
+      setConsecutiveEmptyPages(0);
     } catch (err: unknown) {
+      if (epoch !== feedEpochRef.current) return;
       console.error('Failed to fetch news items from Supabase:', err);
-      const message = err instanceof Error ? err.message : 'Unknown error';
+      const message = getErrorMessage(err);
       setError(`Failed to load intelligence feed: ${message}`);
     } finally {
-      setNow(new Date());
-      setLoading(false);
-      setRefreshing(false);
-      setHasLoaded(true);
+      if (epoch === feedEpochRef.current) {
+        setNow(new Date());
+        setLoading(false);
+        setRefreshing(false);
+        setHasLoaded(true);
+      }
     }
   }, []);
+
+  const noOlderItems = consecutiveEmptyPages >= MAX_CONSECUTIVE_EMPTY_PAGES;
+
+  // Fetch the previous 14-day slice of older items and merge without duplicates
+  const handleLoadOlder = useCallback(async () => {
+    if (!olderThan || loadingOlder || noOlderItems) return;
+
+    const epoch = feedEpochRef.current;
+    const currentCutoff = olderThan;
+    const nextCutoffIso = new Date(
+      new Date(currentCutoff).getTime() - WINDOW_STEP_DAYS * MS_PER_DAY
+    ).toISOString();
+
+    setLoadingOlder(true);
+    setOlderError(null);
+
+    try {
+      const { data, error: sbError } = await supabase
+        .from('news_items')
+        .select('*')
+        .lt('created_at', currentCutoff)
+        .gte('created_at', nextCutoffIso)
+        .order('is_read', { ascending: true })
+        .order('created_at', { ascending: false });
+
+      if (sbError) {
+        throw sbError;
+      }
+
+      if (epoch !== feedEpochRef.current) return;
+
+      const incoming = (data as NewsItem[]) || [];
+      if (incoming.length > 0) {
+        setItems((prev) => mergeAndSortNewsItems(prev, incoming));
+        setConsecutiveEmptyPages(0);
+      } else {
+        setConsecutiveEmptyPages((prev) => prev + 1);
+      }
+
+      setOlderThan(nextCutoffIso);
+      setWindowDays((prev) => prev + WINDOW_STEP_DAYS);
+    } catch (err: unknown) {
+      if (epoch !== feedEpochRef.current) return;
+      console.error('Failed to load older news items from Supabase:', err);
+      const message = getErrorMessage(err);
+      setOlderError(`Failed to load older items: ${message}`);
+    } finally {
+      if (epoch === feedEpochRef.current) {
+        setLoadingOlder(false);
+      }
+    }
+  }, [olderThan, loadingOlder, noOlderItems]);
 
   useEffect(() => {
     loadNews();
@@ -758,39 +867,51 @@ export default function HomePage() {
           <TodayPracticeCard isDusk={isDusk} />
 
           {/* Quick Batch Action Bar / Active Search Results Summary */}
-          {!loading && (unreadItems.length > 0 || (isSearchActive && filteredItems.length > 0)) && (
+          {!loading && (unreadItems.length > 0 || isSearchActive) && (
             <div
-              className={`flex items-center justify-between px-1 text-xs pb-1 ${
+              className={`px-1 text-xs pb-1 ${
                 isDusk ? 'text-[#D5CEE6]' : 'text-[#5A544E]'
               }`}
             >
-              {isSearchActive ? (
-                <span
-                  data-testid="search-results-count"
-                  aria-live="polite"
-                  className="font-medium"
-                >
-                  {filteredItems.length} {filteredItems.length === 1 ? 'result' : 'results'}
-                </span>
-              ) : (
-                <span className="font-medium">
-                  Showing {unreadItems.length} unread {unreadItems.length === 1 ? 'post' : 'posts'}
-                </span>
-              )}
-              {unreadItems.length > 0 && (
-                <button
-                  type="button"
-                  data-testid="btn-mark-all-read"
-                  onClick={handleMarkAllRead}
-                  className={`inline-flex items-center gap-1 rounded-lg px-2 py-1.5 -mr-2 text-xs font-semibold transition-colors active:scale-95 touch-manipulation cursor-pointer ${focusRingClass} ${
-                    isDusk
-                      ? 'text-rose-400 hover:text-rose-300'
-                      : 'text-rose-700 hover:text-rose-900'
+              <div className="flex items-center justify-between gap-2">
+                {isSearchActive ? (
+                  <span
+                    data-testid="search-results-count"
+                    aria-live="polite"
+                    className="font-medium"
+                  >
+                    {filteredItems.length} {filteredItems.length === 1 ? 'result' : 'results'}
+                  </span>
+                ) : (
+                  <span className="font-medium">
+                    Showing {unreadItems.length} unread {unreadItems.length === 1 ? 'post' : 'posts'}
+                  </span>
+                )}
+                {unreadItems.length > 0 && (
+                  <button
+                    type="button"
+                    data-testid="btn-mark-all-read"
+                    onClick={handleMarkAllRead}
+                    className={`inline-flex items-center gap-1 rounded-lg px-2 py-1.5 -mr-2 text-xs font-semibold transition-colors active:scale-95 touch-manipulation cursor-pointer ${focusRingClass} ${
+                      isDusk
+                        ? 'text-rose-400 hover:text-rose-300'
+                        : 'text-rose-700 hover:text-rose-900'
+                    }`}
+                  >
+                    <CheckCheck aria-hidden="true" className="w-3.5 h-3.5" />
+                    <span>Mark all read</span>
+                  </button>
+                )}
+              </div>
+              {isSearchActive && activeFilter !== 'SAVED' && (
+                <p
+                  data-testid="search-window-hint"
+                  className={`mt-0.5 text-[11px] leading-4 ${
+                    isDusk ? 'text-[#B3ACC5]' : 'text-[#6A635C]'
                   }`}
                 >
-                  <CheckCheck aria-hidden="true" className="w-3.5 h-3.5" />
-                  <span>Mark all read</span>
-                </button>
+                  Searching items from the last {windowDays} days
+                </p>
               )}
             </div>
           )}
@@ -1076,6 +1197,57 @@ export default function HomePage() {
                 </motion.div>
               )}
             </AnimatePresence>
+          </div>
+        )}
+
+        {/* Load Older Items Footer (hidden on SAVED) */}
+        {!loading && hasLoaded && olderThan !== null && activeFilter !== 'SAVED' && (
+          <div className="pt-3 pb-1 flex flex-col items-center gap-2">
+            {olderError && (
+              <p
+                role="alert"
+                data-testid="load-older-error"
+                className={`text-xs font-medium text-center px-2 break-words max-w-full ${
+                  isDusk ? 'text-rose-300' : 'text-rose-800'
+                }`}
+              >
+                {olderError}
+              </p>
+            )}
+            {noOlderItems ? (
+              <p
+                role="status"
+                data-testid="no-older-items"
+                className={`text-xs font-medium py-2 ${
+                  isDusk ? 'text-[#B3ACC5]' : 'text-[#6A635C]'
+                }`}
+              >
+                No older items
+              </p>
+            ) : (
+              <button
+                type="button"
+                data-testid="load-older"
+                aria-label={loadingOlder ? 'Loading older items' : 'Load older items'}
+                aria-busy={loadingOlder}
+                disabled={loadingOlder || refreshing}
+                onClick={handleLoadOlder}
+                className={`inline-flex items-center justify-center gap-2 min-h-[44px] min-w-[44px] px-5 py-2.5 rounded-2xl border text-xs font-semibold transition-colors touch-manipulation cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${focusRingClass} ${
+                  isDusk
+                    ? 'bg-[#2A263A]/80 hover:bg-[#353048] border-[#3E3852] text-[#D8D2E7]'
+                    : 'bg-[#EDE8DF]/80 hover:bg-[#E2DBD0] border-[#D2C9B8] text-[#4A443E]'
+                }`}
+              >
+                {loadingOlder ? (
+                  <>
+                    <SpinnerIcon className="w-3.5 h-3.5 animate-spin shrink-0" />
+                    <span>Loading older...</span>
+                  </>
+                ) : (
+                  <span>Load older</span>
+                )}
+              </button>
+            )}
           </div>
         )}
       </main>

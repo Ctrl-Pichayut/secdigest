@@ -288,3 +288,23 @@ export function SearchIcon({ className, title }: IconProps) {
     </IconBase>
   );
 }
+
+/** Open circular arc for loading spinners. */
+export function SpinnerIcon({ className, title }: IconProps) {
+  return (
+    <IconBase className={className} title={title}>
+      <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+    </IconBase>
+  );
+}
+
+/** Share arrow rising from an open tray for sharing news cards. */
+export function ShareIcon({ className, title }: IconProps) {
+  return (
+    <IconBase className={className} title={title}>
+      <path d="M12 3v12" />
+      <path d="M8 7l4-4 4 4" />
+      <path d="M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6" />
+    </IconBase>
+  );
+}

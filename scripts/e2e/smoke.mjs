@@ -325,6 +325,7 @@ async function checkNoHorizontalOverflow(page, pageLabel, viewports = OVERFLOW_V
 async function main() {
   const pythonCardCount = readPythonCardCount();
   const newsFixtures = buildNewsFixtures(new Date());
+  const recordedNewsGets = [];
   const recordedWrites = [];
   const consoleErrors = [];
   const pageErrors = [];
@@ -391,6 +392,10 @@ async function main() {
 
       if (method === 'GET') {
         if (url.pathname === '/rest/v1/news_items') {
+          recordedNewsGets.push({
+            url: req.url(),
+            search: url.search,
+          });
           await route.fulfill({
             status: 200,
             headers: { ...corsHeaders, 'content-type': 'application/json' },
@@ -607,6 +612,52 @@ async function main() {
         5000,
         `PATCH /rest/v1/news_items?id=eq.${secondId} with is_bookmarked=true`
       );
+    });
+
+    await runCheck('Clicking Load older issues a second GET with created_at=lt.', async () => {
+      if (recordedNewsGets.length < 1) {
+        throw new Error('Expected at least one initial GET /rest/v1/news_items before clicking load-older');
+      }
+
+      const loadOlderBtn = page.locator('[data-testid="load-older"]');
+      await loadOlderBtn.scrollIntoViewIfNeeded();
+      await loadOlderBtn.waitFor({ state: 'visible', timeout: 5000 });
+
+      const getsBefore = recordedNewsGets.length;
+      await loadOlderBtn.click();
+
+      const deadline = Date.now() + 5000;
+      let matchedGet = null;
+      while (Date.now() < deadline) {
+        matchedGet = recordedNewsGets
+          .slice(getsBefore)
+          .find((entry) => entry.search.includes('created_at=lt.'));
+        if (matchedGet) break;
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+
+      if (!matchedGet) {
+        throw new Error(
+          `Expected GET /rest/v1/news_items with created_at=lt. after clicking load-older. Recorded GETs: ${JSON.stringify(
+            recordedNewsGets.slice(getsBefore)
+          )}`
+        );
+      }
+
+      await page.waitForFunction(
+        () => {
+          const btn = document.querySelector('[data-testid="load-older"]');
+          return Boolean(btn) && btn.getAttribute('aria-busy') !== 'true';
+        },
+        undefined,
+        { timeout: 5000 }
+      );
+
+      if (consoleErrors.length > 0 || pageErrors.length > 0) {
+        throw new Error(
+          `Console/page errors detected after clicking load-older: ${JSON.stringify({ consoleErrors, pageErrors })}`
+        );
+      }
     });
 
     await runCheck('Practice page renders progress, Next up chip, streak panel, and starts 2-minute session', async () => {
