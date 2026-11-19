@@ -70,13 +70,14 @@ def _make_curated_item(
     source_id,
     is_breaking=False,
     category=fetch_news.CategoryEnum.DEV_CLOUD,
+    title=None,
 ):
     """Build a validated CuratedNewsItem instance."""
     return fetch_news.CuratedNewsItem(
         source_id=source_id,
         category=category,
         is_breaking=is_breaking,
-        title=f"Title for {source_id}",
+        title=title if title is not None else f"Title for {source_id}",
         tldr=f"Concise technical summary for {source_id}.",
         actionable_value=f"Actionable takeaway for {source_id}.",
         url=f"https://example.com/{source_id}",
@@ -2473,6 +2474,286 @@ class TestFetchRssFeeds(unittest.TestCase):
             self.assertIn("| rss | 1 | error |", content)
             self.assertIn("- Failed sources: rss", content)
             self.assertIn("- Status: ok", content)
+
+
+class TestNearDuplicateDeduplication(unittest.TestCase):
+    """Tests for normalize_title_tokens, is_near_duplicate, and post-curation deduplication."""
+
+    def test_normalize_title_tokens_keeps_versions_cves_and_drops_stopwords_and_short_tokens(
+        self,
+    ):
+        tokens = fetch_news.normalize_title_tokens(
+            "Google releases a new Gemini 4 and Python 5.2 fix for CVE-2026-1234!"
+        )
+        self.assertEqual(
+            tokens,
+            {"google", "releases", "gemini", "4", "python", "5.2", "fix", "cve-2026-1234"},
+        )
+
+        short_tokens = fetch_news.normalize_title_tokens(
+            "Project X is now at v2 with a 0-day bug"
+        )
+        self.assertEqual(short_tokens, {"project", "v2", "0-day", "bug"})
+
+    def test_exact_repeat_matches(self):
+        previous = ["Critical OpenSSH Pre-Auth RCE Vulnerability"]
+        matched = fetch_news.is_near_duplicate(
+            "Critical OpenSSH Pre-Auth RCE Vulnerability",
+            previous,
+        )
+        self.assertEqual(matched, previous[0])
+
+    def test_reordered_words_matches(self):
+        previous = ["Cloudflare BGP Route Leak Causes Global Outage"]
+        matched = fetch_news.is_near_duplicate(
+            "Global Outage from Cloudflare BGP Route Leak",
+            previous,
+        )
+        self.assertEqual(matched, previous[0])
+
+    def test_different_stories_sharing_generic_words_do_not_match(self):
+        matched_long = fetch_news.is_near_duplicate(
+            "Google releases Chrome 135 Security Update",
+            ["Google releases Gemini 4 Flash"],
+        )
+        self.assertIsNone(matched_long)
+
+        matched_short = fetch_news.is_near_duplicate(
+            "Google releases Kubernetes",
+            ["Google releases TensorFlow"],
+        )
+        self.assertIsNone(matched_short)
+
+    def test_cve_id_match_with_different_wording_case_insensitive(self):
+        previous = ["CISA Adds Actively Exploited Fortinet Bug (CVE-2026-12345) to KEV"]
+        candidate = "ThaiCERT Advisory: Patch cve-2026-12345 Immediately"
+
+        prev_tokens = fetch_news.normalize_title_tokens(previous[0])
+        cand_tokens = fetch_news.normalize_title_tokens(candidate)
+        jaccard = len(prev_tokens & cand_tokens) / len(prev_tokens | cand_tokens)
+        self.assertLess(jaccard, 0.6)
+
+        matched = fetch_news.is_near_duplicate(candidate, previous)
+        self.assertEqual(matched, previous[0])
+
+    def test_empty_previous_list_returns_none(self):
+        matched = fetch_news.is_near_duplicate("OpenSSH Remote Code Execution", [])
+        self.assertIsNone(matched)
+
+    def test_punctuation_and_case_differences_match(self):
+        previous = ["CRITICAL: OpenSSH 9.8 Remote Code Execution (RCE)!"]
+        matched = fetch_news.is_near_duplicate(
+            "critical openssh 9.8 remote code execution - rce",
+            previous,
+        )
+        self.assertEqual(matched, previous[0])
+
+    def test_threshold_edge_exact_and_below(self):
+        # 3 shared tokens out of 5 union tokens => Jaccard = 0.6 exactly.
+        prev_exact = ["Alpha Beta Gamma Delta"]
+        cand_exact = "Alpha Beta Gamma Epsilon"
+        self.assertEqual(
+            fetch_news.is_near_duplicate(cand_exact, prev_exact, threshold=0.6),
+            prev_exact[0],
+        )
+        self.assertIsNone(
+            fetch_news.is_near_duplicate(cand_exact, prev_exact, threshold=0.61)
+        )
+
+        # 4 shared tokens out of 7 union tokens => Jaccard = 4/7 (~0.5714) < 0.6.
+        prev_below = ["Alpha Beta Gamma Delta Zeta"]
+        cand_below = "Alpha Beta Gamma Delta Eta Theta"
+        self.assertIsNone(
+            fetch_news.is_near_duplicate(cand_below, prev_below, threshold=0.6)
+        )
+        self.assertEqual(
+            fetch_news.is_near_duplicate(cand_below, prev_below, threshold=0.57),
+            prev_below[0],
+        )
+
+    def test_within_run_duplicate_and_breaking_repeat_dropped_with_info_logs(self):
+        recent_titles = ["Anthropic Global API Outage Disrupts Claude"]
+        item_breaking_repeat = _make_curated_item(
+            "status_anthropic_1",
+            is_breaking=True,
+            title="Anthropic Global API Outage Disrupts Claude!",
+        )
+        item_first = _make_curated_item(
+            "hn_10",
+            is_breaking=False,
+            category=fetch_news.CategoryEnum.CVE_SECURITY,
+            title="OpenSSH 9.9 Patches Pre-Auth Memory Corruption",
+        )
+        item_within_dup = _make_curated_item(
+            "rss_bleeping_10",
+            is_breaking=False,
+            category=fetch_news.CategoryEnum.CVE_SECURITY,
+            title="Pre-Auth Memory Corruption Patched in OpenSSH 9.9",
+        )
+        item_distinct = _make_curated_item(
+            "rss_cloudflare_11",
+            is_breaking=False,
+            title="Cloudflare Launches Free R2 SQL Analytics",
+        )
+
+        with self.assertLogs(fetch_news.logger, level="INFO") as cm:
+            kept, dropped = fetch_news.deduplicate_curated_items(
+                [item_breaking_repeat, item_first, item_within_dup, item_distinct],
+                recent_titles,
+            )
+
+        self.assertEqual(kept, [item_first, item_distinct])
+        self.assertEqual(dropped, 2)
+        self.assertEqual(recent_titles, ["Anthropic Global API Outage Disrupts Claude"])
+        drop_logs = [
+            msg for msg in cm.output if "Dropped duplicate curated item" in msg
+        ]
+        self.assertEqual(len(drop_logs), 2)
+        self.assertIn(item_breaking_repeat.title, drop_logs[0])
+        self.assertIn(recent_titles[0], drop_logs[0])
+        self.assertIn(item_within_dup.title, drop_logs[1])
+        self.assertIn(item_first.title, drop_logs[1])
+
+    def test_main_drops_duplicates_before_save_and_reports_count_in_step_summary(self):
+        candidates = [
+            {
+                "source_id": "cisa_CVE-2026-7777",
+                "category": "CVE_SECURITY",
+                "title": "ThaiCERT Warning: Patch cve-2026-7777 in Ivanti Gateway",
+                "url": "https://example.com/cisa",
+                "raw_context": "Advisory context",
+                "event_start_date": None,
+            },
+            {
+                "source_id": "rss_cloudflare_1",
+                "category": "DEV_CLOUD",
+                "title": "Cloudflare Launches Workers VPC Preview",
+                "url": "https://example.com/cf",
+                "raw_context": "Blog post",
+                "event_start_date": None,
+            },
+            {
+                "source_id": "hn_200",
+                "category": "DEV_CLOUD",
+                "title": "Cloudflare Launches Workers VPC Preview Today",
+                "url": "https://example.com/hn",
+                "raw_context": "HN thread",
+                "event_start_date": None,
+            },
+        ]
+        recent_title = "CISA Adds Ivanti Gateway Flaw CVE-2026-7777 to KEV"
+        item_recent_dup = _make_curated_item(
+            "cisa_CVE-2026-7777",
+            is_breaking=True,
+            category=fetch_news.CategoryEnum.CVE_SECURITY,
+            title="ThaiCERT Warning: Patch cve-2026-7777 in Ivanti Gateway",
+        )
+        item_kept = _make_curated_item(
+            "rss_cloudflare_1",
+            is_breaking=False,
+            title="Cloudflare Launches Workers VPC Preview",
+        )
+        item_within_dup = _make_curated_item(
+            "hn_200",
+            is_breaking=False,
+            title="Cloudflare Launches Workers VPC Preview Today",
+        )
+
+        call_order = []
+        saved_items = []
+        recorded_ids = []
+
+        def _fake_save(client, items):
+            call_order.append("save")
+            saved_items.extend(items)
+            return len(items)
+
+        def _fake_record(client, source_ids):
+            call_order.append("record_seen")
+            recorded_ids.extend(source_ids)
+
+        with tempfile.TemporaryDirectory() as tmp_dir, ExitStack() as stack:
+            summary_path = Path(tmp_dir) / "step_summary.md"
+            stack.enter_context(mock.patch.object(sys, "argv", ["fetch_news.py"]))
+            stack.enter_context(
+                mock.patch.dict(
+                    os.environ,
+                    {
+                        "SUPABASE_URL": "https://example.supabase.co",
+                        "SUPABASE_SERVICE_ROLE_KEY": "test-service-role-key",
+                        "GEMINI_API_KEY": "test-gemini-key",
+                        "GITHUB_STEP_SUMMARY": str(summary_path),
+                    },
+                    clear=True,
+                )
+            )
+            stack.enter_context(
+                mock.patch("fetch_news.datetime", _FixedTuesdayDatetime)
+            )
+            stack.enter_context(
+                mock.patch("fetch_news.fetch_cisa_kev", return_value=[candidates[0]])
+            )
+            stack.enter_context(
+                mock.patch("fetch_news.fetch_openrouter_free_models", return_value=[])
+            )
+            stack.enter_context(
+                mock.patch("fetch_news.fetch_hacker_news", return_value=[candidates[2]])
+            )
+            stack.enter_context(
+                mock.patch("fetch_news.fetch_status_incidents", return_value=[])
+            )
+            stack.enter_context(mock.patch("fetch_news.fetch_ctftime", return_value=[]))
+            stack.enter_context(
+                mock.patch("fetch_news.fetch_rss_feeds", return_value=[candidates[1]])
+            )
+            stack.enter_context(mock.patch("fetch_news.create_client"))
+            stack.enter_context(
+                mock.patch("fetch_news.get_existing_source_ids", return_value=set())
+            )
+            stack.enter_context(
+                mock.patch(
+                    "fetch_news.get_recent_published_titles",
+                    return_value=[recent_title],
+                )
+            )
+            stack.enter_context(
+                mock.patch(
+                    "fetch_news.curate_with_gemini",
+                    return_value=[item_recent_dup, item_kept, item_within_dup],
+                )
+            )
+            stack.enter_context(
+                mock.patch("fetch_news.save_to_supabase", side_effect=_fake_save)
+            )
+            stack.enter_context(
+                mock.patch("fetch_news.record_seen_sources", side_effect=_fake_record)
+            )
+
+            with self.assertLogs(fetch_news.logger, level="INFO") as cm:
+                fetch_news.main()
+
+            self.assertEqual(call_order, ["save", "record_seen"])
+            self.assertEqual(saved_items, [item_kept])
+            self.assertEqual(
+                set(recorded_ids),
+                {"cisa_CVE-2026-7777", "rss_cloudflare_1", "hn_200"},
+            )
+
+            content = summary_path.read_text(encoding="utf-8")
+            self.assertIn("- Curated items: 1 (0 breaking)", content)
+            self.assertIn("- Dropped as duplicates: 2", content)
+            self.assertIn("- Cloudflare Launches Workers VPC Preview", content)
+            self.assertNotIn(item_recent_dup.title, content)
+            self.assertNotIn(item_within_dup.title, content)
+
+            drop_logs = [
+                msg for msg in cm.output if "Dropped duplicate curated item" in msg
+            ]
+            self.assertEqual(len(drop_logs), 2)
+            self.assertIn(item_recent_dup.title, drop_logs[0])
+            self.assertIn(recent_title, drop_logs[0])
+            self.assertIn(item_within_dup.title, drop_logs[1])
+            self.assertIn(item_kept.title, drop_logs[1])
 
 
 if __name__ == "__main__":

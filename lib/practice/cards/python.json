@@ -2293,6 +2293,399 @@
     "explanation": "urllib.parse.quote() leaves '/' unescaped by default (safe='/'), so '123/delete' injects an extra path segment into the backend URL. Pass safe='' so '/' is encoded as %2F and stays inside the single user_id segment."
   },
   {
+    "id": "py-145",
+    "lang": "python",
+    "topic": "Regex for security",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import re\np = r'\\d+'\ns = '404 err 500'\nprint(re.findall(p, s))\nprint(bool(re.match(p, s)), bool(re.search(p, 'err 404')))\nprint(bool(re.match(p, 'err 404')), bool(re.fullmatch(p, s)))",
+    "choices": [
+      "['404', '500']\nTrue True\nFalse False",
+      "['404', '500']\nTrue True\nTrue False",
+      "['404', '500']\nTrue True\nFalse True",
+      "['404']\nTrue False\nFalse False"
+    ],
+    "answer": 0,
+    "explanation": "findall returns every non-overlapping match as a list, while search finds the first match anywhere. match only checks the start of the string, and fullmatch requires the entire string to match."
+  },
+  {
+    "id": "py-146",
+    "lang": "python",
+    "topic": "Regex for security",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import re\nlog = '203.0.113.10 \"GET /admin\" 403'\npat = r'(?P<ip>\\d+(?:\\.\\d+){3}) \"(\\w+) ([^\"]+)\" (?P<st>\\d+)'\nm = re.search(pat, log)\nprint(m.group('ip'), m.group(2), m.group('st'))\nprint(len(m.groups()), m.group(3))",
+    "choices": [
+      "203.0.113.10 GET 403\n4 /admin",
+      "203.0.113.10 GET 403\n5 /admin",
+      "203.0.113.10 /admin 403\n4 /admin",
+      "203.0.113.10 GET 403\n2 /admin"
+    ],
+    "answer": 0,
+    "explanation": "Named groups (?P<name>...) can be fetched by name or by position, while (?:...) is non-capturing and does not add an entry to m.groups(). That leaves 4 captured groups: ip, method, path, and st."
+  },
+  {
+    "id": "py-147",
+    "lang": "python",
+    "topic": "Regex for security",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import re\ns = '<tag>a</tag><tag>b</tag>'\ng = re.findall(r'<tag>.*</tag>', s)\nng = re.findall(r'<tag>.*?</tag>', s)\nprint(len(g), g[0])\nprint(len(ng), ng)",
+    "choices": [
+      "1 <tag>a</tag><tag>b</tag>\n2 ['<tag>a</tag>', '<tag>b</tag>']",
+      "2 <tag>a</tag>\n2 ['<tag>a</tag>', '<tag>b</tag>']",
+      "1 <tag>a</tag><tag>b</tag>\n1 ['<tag>a</tag><tag>b</tag>']",
+      "2 <tag>a</tag><tag>b</tag>\n1 ['<tag>a</tag>']"
+    ],
+    "answer": 0,
+    "explanation": ".* is greedy, so it stretches from the first <tag> to the final </tag> in one match. Adding ? makes .*? non-greedy, stopping at each closing tag; for real HTML, use an HTML parser instead of regex."
+  },
+  {
+    "id": "py-148",
+    "lang": "python",
+    "topic": "Regex for security",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import re\nurls = ['javascript:a', 'JavaScript:b', 'https://example.com']\np = r'javascript:'\na = sum(bool(re.match(p, u)) for u in urls)\nb = sum(bool(re.match(p, u, re.IGNORECASE)) for u in urls)\nprint(a, b)",
+    "choices": [
+      "1 2",
+      "2 2",
+      "1 3",
+      "0 2"
+    ],
+    "answer": 0,
+    "explanation": "Regex matching is case-sensitive by default, so 'JavaScript:b' slips past r'javascript:'. Passing re.IGNORECASE catches mixed-case schemes, though allowlisting 'https' with urlparse is safer than blocklisting."
+  },
+  {
+    "id": "py-149",
+    "lang": "python",
+    "topic": "Regex for security",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import re\nlog = 'OK login\\nERR denied\\nERR timeout'\na = re.findall(r'^ERR \\w+$', log)\nb = re.findall(r'^ERR \\w+$', log, re.MULTILINE)\nprint(len(a), b)",
+    "choices": [
+      "0 ['ERR denied', 'ERR timeout']",
+      "2 ['ERR denied', 'ERR timeout']",
+      "0 ['ERR denied']",
+      "1 ['ERR denied', 'ERR timeout']"
+    ],
+    "answer": 0,
+    "explanation": "Without re.MULTILINE, ^ and $ match only the start and end of the whole string, so neither ERR line matches. With re.MULTILINE they match each line boundary; avoid MULTILINE for allowlist validation so newlines cannot smuggle payloads."
+  },
+  {
+    "id": "py-150",
+    "lang": "python",
+    "topic": "Regex for security",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import ipaddress, re\ntext = 'src=192.0.2.5 bad=999.1.1.1 dst=198.51.100.7'\ncands = re.findall(r'\\b\\d{1,3}(?:\\.\\d{1,3}){3}\\b', text)\nvalid = []\nfor c in cands:\n    try:\n        valid.append(str(ipaddress.IPv4Address(c)))\n    except ValueError:\n        pass\nprint(len(cands), valid)",
+    "choices": [
+      "3 ['192.0.2.5', '198.51.100.7']",
+      "2 ['192.0.2.5', '198.51.100.7']",
+      "3 ['192.0.2.5', '999.1.1.1', '198.51.100.7']",
+      "0 []"
+    ],
+    "answer": 0,
+    "explanation": "A simple dotted-digit regex extracts candidates quickly but accepts impossible octets like 999.1.1.1. Validating each match with ipaddress.IPv4Address() filters out invalid addresses cleanly."
+  },
+  {
+    "id": "py-151",
+    "lang": "python",
+    "topic": "Regex for security",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import re\nlog = 'user=alice@example.com backup=bob@ops.test'\ndef mask(m):\n    name, dom = m.group(1), m.group(2)\n    return name[0] + '***@' + dom\nout = re.sub(r'([\\w.]+)@([\\w.]+)', mask, log)\nprint(out)",
+    "choices": [
+      "user=a***@example.com backup=b***@ops.test",
+      "user=***@example.com backup=***@ops.test",
+      "user=a***@example.com backup=bob@ops.test",
+      "a***@example.com b***@ops.test"
+    ],
+    "answer": 0,
+    "explanation": "Passing a function to re.sub() calls it with each Match object and substitutes its return value. This lets you redact emails or tokens dynamically before writing records to shared logs."
+  },
+  {
+    "id": "py-152",
+    "lang": "python",
+    "topic": "Regex for security",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import re\nhost = 'api.example.com'\nspoof = 'apiXexampleYcom'\na = bool(re.fullmatch(host, spoof))\nb = bool(re.fullmatch(re.escape(host), spoof))\nprint(a, b, re.escape('a.b'))",
+    "choices": [
+      "True False a\\.b",
+      "False False a\\.b",
+      "True True a\\.b",
+      "True False a.b"
+    ],
+    "answer": 0,
+    "explanation": "Unescaped dots in a regex act as wildcards matching any character, so 'api.example.com' matches 'apiXexampleYcom'. Always wrap user-supplied or literal strings with re.escape() before inserting them into a pattern."
+  },
+  {
+    "id": "py-153",
+    "lang": "python",
+    "topic": "Regex for security",
+    "kind": "bug",
+    "prompt": "Passing 'docs-1; id' passes this allow-list check because trailing characters are ignored. Which line is wrong?",
+    "lines": [
+      "def is_safe_slug(slug):",
+      "    pat = r'[a-z0-9_-]{1,20}'",
+      "    if not isinstance(slug, str):",
+      "        return False",
+      "    return bool(re.match(pat, slug))"
+    ],
+    "bugLine": 4,
+    "fixedLine": "    return bool(re.fullmatch(pat, slug))",
+    "explanation": "re.match() only anchors at the start of the string, so 'docs-1; id' matches on its prefix 'docs-1' and bypasses validation. Use re.fullmatch() so the entire input must conform to the allow-list."
+  },
+  {
+    "id": "py-154",
+    "lang": "python",
+    "topic": "Regex for security",
+    "kind": "bug",
+    "prompt": "A long non-matching hostname freezes the regex engine via catastrophic backtracking. Which line is the security bug?",
+    "lines": [
+      "def is_demo_host(host):",
+      "    if not host:",
+      "        return False",
+      "    pat = r'^([a-z0-9]+)+\\.example\\.com$'",
+      "    return bool(re.search(pat, host))"
+    ],
+    "bugLine": 3,
+    "fixedLine": "    pat = r'^[a-z0-9]+\\.example\\.com$'",
+    "explanation": "Nested quantifiers like ([a-z0-9]+)+ trigger exponential backtracking when the required suffix fails to match, causing ReDoS. Replace them with a single flat quantifier [a-z0-9]+ so matching runs in linear time."
+  },
+  {
+    "id": "py-155",
+    "lang": "python",
+    "topic": "Regex for security",
+    "kind": "bug",
+    "prompt": "Passing domain='example.com' lets 'bob@exampleXcom' pass validation. Which line is the security bug?",
+    "lines": [
+      "def is_company_email(email, domain):",
+      "    if '@' not in email:",
+      "        return False",
+      "    pat = rf'[a-z0-9._-]+@{domain}'",
+      "    return bool(re.fullmatch(pat, email))"
+    ],
+    "bugLine": 3,
+    "fixedLine": "    pat = rf'[a-z0-9._-]+@{re.escape(domain)}'",
+    "explanation": "Interpolating domain directly leaves its dot unescaped, so regex treats '.' as a wildcard that matches 'X'. Wrap dynamic literals with re.escape(domain) so special characters match only themselves."
+  },
+  {
+    "id": "py-156",
+    "lang": "python",
+    "topic": "Regex for security",
+    "kind": "order",
+    "prompt": "Put the lines in order so this log pipeline extracts and sorts unique failed IPs.",
+    "lines": [
+      "import re",
+      "def failed_ips(log):",
+      "    pat = re.compile(r'FAIL (?P<ip>[\\d.]+)')",
+      "    ips = [m.group('ip') for m in pat.finditer(log)]",
+      "    uniq = sorted(set(ips))",
+      "    return ','.join(uniq)",
+      "print(failed_ips('FAIL 203.0.113.9; OK; FAIL 192.0.2.1'))"
+    ],
+    "explanation": "Compile the regex with a named group, iterate over matches with finditer(), deduplicate and sort the IPs, then join them into a summary string. Each step feeds the next in a clear log-parsing pipeline.",
+    "expectOutput": "192.0.2.1,203.0.113.9"
+  },
+  {
+    "id": "py-157",
+    "lang": "python",
+    "topic": "Binary data & struct",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import struct\nle = struct.pack('<I', 0x11223344)\nbe = struct.pack('>I', 0x11223344)\nval, = struct.unpack('>I', le)\nprint(le.hex(), be.hex(), hex(val))",
+    "choices": [
+      "44332211 11223344 0x44332211",
+      "11223344 44332211 0x11223344",
+      "44332211 11223344 0x11223344",
+      "11223344 11223344 0x44332211"
+    ],
+    "answer": 0,
+    "explanation": "'<I' packs a 4-byte unsigned int little-endian (least significant byte 0x44 first), while '>I' packs big-endian (0x11 first). Unpacking little-endian bytes with '>I' reverses the byte order into 0x44332211."
+  },
+  {
+    "id": "py-158",
+    "lang": "python",
+    "topic": "Binary data & struct",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import struct\na = struct.calcsize('<HI')\nb = struct.calcsize('!H2xI')\nc = struct.calcsize('>4sBQ')\nprint(a, b, c)",
+    "choices": [
+      "6 8 13",
+      "8 8 16",
+      "6 6 13",
+      "6 8 12"
+    ],
+    "answer": 0,
+    "explanation": "Explicit prefixes (<, >, !) use standard sizes with no implicit alignment padding (H=2, I=4, B=1, Q=8, 4s=4), while 2x adds two pad bytes. Omitting the prefix enables native C alignment, which can vary across platforms."
+  },
+  {
+    "id": "py-159",
+    "lang": "python",
+    "topic": "Binary data & struct",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "raw = (-2).to_bytes(2, 'little', signed=True)\nu = int.from_bytes(raw, 'little', signed=False)\ns = int.from_bytes(raw, 'little', signed=True)\nprint(raw.hex(), u, s)",
+    "choices": [
+      "feff 65534 -2",
+      "fffe 65534 -2",
+      "feff -2 -2",
+      "feff 65279 -2"
+    ],
+    "answer": 0,
+    "explanation": "In 16-bit two's complement, -2 is 0xfffe, which little-endian stores as b'\\xfe\\xff' (feff). Reading those same bytes with signed=False yields 65534, illustrating how signedness mix-ups inflate small negative numbers into huge lengths."
+  },
+  {
+    "id": "py-160",
+    "lang": "python",
+    "topic": "Binary data & struct",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import struct\naddr = 0x401136\nbuf = b'A' * 8 + struct.pack('<Q', addr)\nprint(len(buf), buf[8:].hex())",
+    "choices": [
+      "16 3611400000000000",
+      "16 0000000000401136",
+      "12 36114000",
+      "16 6311040000000000"
+    ],
+    "answer": 0,
+    "explanation": "'<Q' packs a 64-bit unsigned integer into 8 little-endian bytes, putting the least significant byte 0x36 first and zero-padding the upper bytes. Concatenating with 8 bytes of padding produces a 16-byte buffer."
+  },
+  {
+    "id": "py-161",
+    "lang": "python",
+    "topic": "Binary data & struct",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "pkt = b'\\x10\\x20\\x30'\nprint(type(pkt[0]).__name__, type(pkt[:1]).__name__)\nprint(pkt[0] == b'\\x10', pkt[:1] == b'\\x10', list(pkt))",
+    "choices": [
+      "int bytes\nFalse True [16, 32, 48]",
+      "bytes bytes\nTrue True [16, 32, 48]",
+      "int bytes\nFalse True [10, 20, 30]",
+      "int bytes\nTrue True [16, 32, 48]"
+    ],
+    "answer": 0,
+    "explanation": "Indexing a bytes object returns an int (0-255), so pkt[0] == b'\\x10' is False even though the byte matches. Slicing with pkt[:1] preserves the bytes type, and iterating over pkt yields decimal byte values."
+  },
+  {
+    "id": "py-162",
+    "lang": "python",
+    "topic": "Binary data & struct",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "buf = bytearray(b'\\x01\\x02\\x03')\nbuf[0] = 0x7f\nbuf[1:] = b'EL'\nbuf.append(0x46)\nprint(bytes(buf))",
+    "choices": [
+      "b'\\x7fELF'",
+      "b'\\x7fEL'",
+      "TypeError",
+      "b'\\x01ELF'"
+    ],
+    "answer": 0,
+    "explanation": "Unlike immutable bytes, bytearray supports in-place index assignment, slice replacement, and append(). Setting index 0 to 0x7f, replacing the slice with b'EL', and appending 0x46 ('F') builds the 4-byte ELF magic header."
+  },
+  {
+    "id": "py-163",
+    "lang": "python",
+    "topic": "Binary data & struct",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "PNG = b'\\x89PNG\\r\\n\\x1a\\n'\nELF = b'\\x7fELF'\ndef sniff(b):\n    if b.startswith(PNG): return 'png'\n    if b.startswith(ELF): return 'elf'\n    return 'other'\nblobs = [b'\\x7fELF\\x02', PNG + b'\\x00', b'fake.png']\nprint([sniff(x) for x in blobs])",
+    "choices": [
+      "['elf', 'png', 'other']",
+      "['elf', 'png', 'png']",
+      "['other', 'png', 'other']",
+      "['elf', 'other', 'other']"
+    ],
+    "answer": 0,
+    "explanation": "Checking magic bytes with startswith() identifies ELF (\\x7fELF) and PNG (\\x89PNG\\r\\n\\x1a\\n) headers rather than trusting filenames like 'fake.png'. Remember that magic-byte checks alone do not stop polyglot files."
+  },
+  {
+    "id": "py-164",
+    "lang": "python",
+    "topic": "Binary data & struct",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "FIN, SYN, RST, ACK = 0x01, 0x02, 0x04, 0x10\nflags = SYN | ACK\nhas_syn = bool(flags & SYN)\nhas_rst = bool(flags & RST)\nprint(hex(flags), has_syn, has_rst)",
+    "choices": [
+      "0x12 True False",
+      "0x12 True True",
+      "0x00 False False",
+      "0x10 True False"
+    ],
+    "answer": 0,
+    "explanation": "Bitwise OR (|) combines individual bit flags into one byte (0x02 | 0x10 = 0x12 for TCP SYN-ACK). Bitwise AND (&) masks out all other bits, returning non-zero only when the tested flag is set."
+  },
+  {
+    "id": "py-165",
+    "lang": "python",
+    "topic": "Binary data & struct",
+    "kind": "order",
+    "prompt": "Put the lines in order so this unpacks a 7-byte header and prints DATA v2 abc.",
+    "lines": [
+      "import struct",
+      "def parse_hdr(raw):",
+      "    magic, ver, length = struct.unpack('!4sBH', raw[:7])",
+      "    payload = raw[7:7 + length]",
+      "    return f'{magic.decode()} v{ver} {payload.decode()}'",
+      "print(parse_hdr(b'DATA\\x02\\x00\\x03abcXYZ'))"
+    ],
+    "explanation": "Unpack the fixed 7-byte header first (4-byte magic, 1-byte version, 2-byte big-endian length), then slice exactly length bytes starting at offset 7. Slicing with length ignores trailing bytes like 'XYZ'.",
+    "expectOutput": "DATA v2 abc"
+  },
+  {
+    "id": "py-166",
+    "lang": "python",
+    "topic": "Binary data & struct",
+    "kind": "bug",
+    "prompt": "Parsing a 6-byte packet header (2-byte flags + 4-byte seq) raises struct.error. Which line is wrong?",
+    "lines": [
+      "def parse_header(raw):",
+      "    if len(raw) != 6:",
+      "        raise ValueError('expected 6 bytes')",
+      "    flags, seq = struct.unpack('!II', raw)",
+      "    return flags, seq"
+    ],
+    "bugLine": 3,
+    "fixedLine": "    flags, seq = struct.unpack('!HI', raw)",
+    "explanation": "'!II' expects two 4-byte unsigned ints (8 bytes total), so unpacking a 6-byte buffer raises struct.error. Use '!HI' for a 2-byte unsigned short followed by a 4-byte unsigned int."
+  },
+  {
+    "id": "py-167",
+    "lang": "python",
+    "topic": "Binary data & struct",
+    "kind": "bug",
+    "prompt": "An x86 binary header stores size 16 as b'\\x10\\x00\\x00\\x00', but this returns 268435456. Which line is wrong?",
+    "lines": [
+      "def read_le_size(header):",
+      "    if len(header) < 4:",
+      "        raise ValueError('short header')",
+      "    size, = struct.unpack('>I', header[:4])",
+      "    return size"
+    ],
+    "bugLine": 3,
+    "fixedLine": "    size, = struct.unpack('<I', header[:4])",
+    "explanation": "x86 and x86-64 binaries store multi-byte integers in little-endian order, with the least significant byte first. Format '>I' reads big-endian (0x10000000 = 268435456); switch to '<I' to decode 16."
+  },
+  {
+    "id": "py-168",
+    "lang": "python",
+    "topic": "Binary data & struct",
+    "kind": "bug",
+    "prompt": "Every user is treated as an admin regardless of their permission bits. Which line is the security bug?",
+    "lines": [
+      "ADMIN = 0x04",
+      "def is_admin(flags):",
+      "    if not isinstance(flags, int):",
+      "        return False",
+      "    return bool(flags | ADMIN)"
+    ],
+    "bugLine": 4,
+    "fixedLine": "    return bool(flags & ADMIN)",
+    "explanation": "Bitwise OR (|) sets the ADMIN bit, so flags | ADMIN is always non-zero and truthy even when the user lacks that flag. Use bitwise AND (&) to check whether the bit is actually set."
+  },
+  {
     "id": "py-058",
     "lang": "python",
     "topic": "CTF toolbox",

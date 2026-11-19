@@ -451,7 +451,7 @@ async function main() {
       pageErrors.push(err instanceof Error ? err.message : String(err));
     });
 
-    await page.route(SUPABASE_GLOB, async (route) => {
+    await context.route(SUPABASE_GLOB, async (route) => {
       const req = route.request();
       const method = req.method().toUpperCase();
       const url = new URL(req.url());
@@ -739,6 +739,87 @@ async function main() {
         );
       }
     });
+
+    await runCheck(
+      'Auto-refresh on visibilitychange after 30+ minutes triggers a new GET /rest/v1/news_items',
+      async () => {
+        const resumePage = await context.newPage();
+        const resumeConsoleErrors = [];
+        const resumePageErrors = [];
+
+        resumePage.on('console', (msg) => {
+          if (msg.type() === 'error') {
+            const text = msg.text();
+            if (!isIgnoredConsoleError(text)) {
+              resumeConsoleErrors.push(text);
+            }
+          }
+        });
+
+        resumePage.on('pageerror', (err) => {
+          resumePageErrors.push(err instanceof Error ? err.message : String(err));
+        });
+
+        try {
+          await resumePage.clock.install();
+
+          const getsBeforeGoto = recordedNewsGets.length;
+          await resumePage.goto(`${BASE_URL}/`, { waitUntil: 'networkidle', timeout: 15000 });
+          await resumePage.locator('[data-testid^="news-card-"]').first().waitFor({
+            state: 'visible',
+            timeout: 10000,
+          });
+
+          const getsBeforeResume = recordedNewsGets.length;
+          if (getsBeforeResume <= getsBeforeGoto) {
+            throw new Error(
+              'Expected initial GET /rest/v1/news_items before dispatching visibilitychange'
+            );
+          }
+
+          await resumePage.clock.fastForward('31:00');
+
+          await resumePage.evaluate(() => {
+            Object.defineProperty(document, 'visibilityState', {
+              configurable: true,
+              get: () => 'visible',
+            });
+            document.dispatchEvent(new Event('visibilitychange'));
+          });
+
+          const deadline = Date.now() + 5000;
+          while (Date.now() < deadline && recordedNewsGets.length <= getsBeforeResume) {
+            await new Promise((resolve) => setTimeout(resolve, 50));
+          }
+
+          if (recordedNewsGets.length <= getsBeforeResume) {
+            throw new Error(
+              `Expected a new GET /rest/v1/news_items after visibilitychange past 30 minutes (before=${getsBeforeResume}, after=${recordedNewsGets.length})`
+            );
+          }
+
+          await resumePage.waitForFunction(
+            () => {
+              const btn = document.querySelector('[data-testid="btn-refresh"]');
+              return Boolean(btn) && !btn.hasAttribute('disabled');
+            },
+            undefined,
+            { timeout: 5000 }
+          );
+
+          if (resumeConsoleErrors.length > 0 || resumePageErrors.length > 0) {
+            throw new Error(
+              `Console/page errors detected during resume auto-refresh: ${JSON.stringify({
+                consoleErrors: resumeConsoleErrors,
+                pageErrors: resumePageErrors,
+              })}`
+            );
+          }
+        } finally {
+          await resumePage.close();
+        }
+      }
+    );
 
     await runCheck('Practice page renders progress, Next up chip, streak panel, and starts 2-minute session', async () => {
       await page.goto(`${BASE_URL}/practice`, { waitUntil: 'networkidle', timeout: 15000 });

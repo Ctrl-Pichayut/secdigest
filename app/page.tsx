@@ -56,6 +56,12 @@ const DEFAULT_SUBTITLE = 'Daily CS, Security & AI Intelligence';
 const WINDOW_STEP_DAYS = 14;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const MAX_CONSECUTIVE_EMPTY_PAGES = 2;
+const AUTO_REFRESH_STALE_MS = 30 * 60 * 1000;
+
+type NavigatorWithBadge = Navigator & {
+  setAppBadge?: (contents?: number) => Promise<void>;
+  clearAppBadge?: () => Promise<void>;
+};
 
 function getErrorMessage(err: unknown): string {
   if (err instanceof Error && err.message) return err.message;
@@ -164,6 +170,7 @@ export default function HomePage() {
   const [items, setItems] = useState<NewsItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [hasLoaded, setHasLoaded] = useState<boolean>(false);
+  const [successfulLoadCount, setSuccessfulLoadCount] = useState<number>(0);
   const [refreshing, setRefreshing] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [olderThan, setOlderThan] = useState<string | null>(null);
@@ -179,6 +186,10 @@ export default function HomePage() {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const searchToggleRef = useRef<HTMLButtonElement>(null);
   const feedEpochRef = useRef<number>(0);
+  const lastSuccessAtRef = useRef<number | null>(null);
+  const lastLoadFailedRef = useRef<boolean>(false);
+  const inFlightRef = useRef<boolean>(false);
+  const hasActiveSearchQueryRef = useRef<boolean>(false);
 
   // Shared reading-theme store — stays in sync with the Solved CTF pages.
   const { theme, isDusk, toggle: toggleTheme } = useTheme();
@@ -217,6 +228,7 @@ export default function HomePage() {
   // Load recent (last 14 days) or still relevant (unread/bookmarked) items from Supabase
   const loadNews = useCallback(async (isRefresh = false) => {
     const epoch = ++feedEpochRef.current;
+    inFlightRef.current = true;
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
     setError(null);
@@ -245,13 +257,18 @@ export default function HomePage() {
       setOlderThan(cutoffIso);
       setWindowDays(WINDOW_STEP_DAYS);
       setConsecutiveEmptyPages(0);
+      lastSuccessAtRef.current = Date.now();
+      lastLoadFailedRef.current = false;
+      setSuccessfulLoadCount((prev) => prev + 1);
     } catch (err: unknown) {
       if (epoch !== feedEpochRef.current) return;
+      lastLoadFailedRef.current = true;
       console.error('Failed to fetch news items from Supabase:', err);
       const message = getErrorMessage(err);
       setError(`Failed to load intelligence feed: ${message}`);
     } finally {
       if (epoch === feedEpochRef.current) {
+        inFlightRef.current = false;
         setNow(new Date());
         setLoading(false);
         setRefreshing(false);
@@ -314,6 +331,55 @@ export default function HomePage() {
 
   useEffect(() => {
     loadNews();
+  }, [loadNews]);
+
+  // Keep a ref of whether the user has an active search query open so resume listeners stay stable
+  useEffect(() => {
+    hasActiveSearchQueryRef.current =
+      isSearchOpen &&
+      (searchInput.trim().length > 0 || debouncedQuery.trim().length > 0);
+  }, [isSearchOpen, searchInput, debouncedQuery]);
+
+  // Auto-refresh stale feed when resuming the PWA or regaining connectivity
+  useEffect(() => {
+    const isLastSuccessStale = () => {
+      const lastSuccessAt = lastSuccessAtRef.current;
+      return (
+        lastSuccessAt !== null &&
+        Date.now() - lastSuccessAt > AUTO_REFRESH_STALE_MS
+      );
+    };
+
+    const maybeAutoRefresh = () => {
+      if (
+        navigator.onLine === false ||
+        inFlightRef.current ||
+        hasActiveSearchQueryRef.current
+      ) {
+        return;
+      }
+      void loadNews(true);
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== 'visible') return;
+      if (isLastSuccessStale()) {
+        maybeAutoRefresh();
+      }
+    };
+
+    const handleOnline = () => {
+      if (lastLoadFailedRef.current || isLastSuccessStale()) {
+        maybeAutoRefresh();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('online', handleOnline);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('online', handleOnline);
+    };
   }, [loadNews]);
 
   // Debounce search input by 150ms
@@ -497,6 +563,25 @@ export default function HomePage() {
   const unreadCount = useMemo(() => {
     return items.filter((item) => !item.is_read).length;
   }, [items]);
+
+  // Keep the PWA app badge synced with unread items after loads and read/unread changes
+  useEffect(() => {
+    if (successfulLoadCount === 0) return;
+    if (typeof navigator === 'undefined' || !('setAppBadge' in navigator)) return;
+
+    const nav = navigator as NavigatorWithBadge;
+    void (async () => {
+      try {
+        if (unreadCount > 0) {
+          await nav.setAppBadge?.(unreadCount);
+        } else if (typeof nav.clearAppBadge === 'function') {
+          await nav.clearAppBadge();
+        }
+      } catch {
+        // Ignore unsupported or permission-denied badge errors
+      }
+    })();
+  }, [successfulLoadCount, unreadCount]);
 
   const totalCount = items.length;
   const totalReadCount = totalCount - unreadCount;

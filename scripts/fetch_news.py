@@ -27,7 +27,7 @@ import logging
 import os
 import re
 import sys
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 import xml.etree.ElementTree as ET
 
 from dotenv import load_dotenv
@@ -1044,6 +1044,133 @@ def get_recent_published_titles(
         return []
 
 
+_TITLE_STOPWORDS: Set[str] = {
+    "a",
+    "an",
+    "the",
+    "and",
+    "or",
+    "for",
+    "of",
+    "to",
+    "in",
+    "on",
+    "with",
+    "by",
+    "from",
+    "at",
+    "as",
+    "is",
+    "are",
+    "its",
+    "new",
+    "now",
+}
+
+_TITLE_PUNCT_RE = re.compile(r"(?:[^\w\s.-]|_|[.-]{2,})")
+_CVE_ID_RE = re.compile(r"CVE-\d{4}-\d{4,}", re.IGNORECASE)
+
+
+def normalize_title_tokens(title: str) -> set[str]:
+    """
+    Normalize a title into a set of meaningful lowercase tokens for near-duplicate checks.
+    Preserves version-like tokens (e.g. '4', '5.2', 'cve-2026-1234') while stripping
+    punctuation, common English stopwords, and non-numeric single-character tokens.
+    """
+    if not isinstance(title, str) or not title:
+        return set()
+
+    cleaned = _TITLE_PUNCT_RE.sub(" ", title.lower())
+    tokens: set[str] = set()
+    for raw_token in cleaned.split():
+        token = raw_token.strip(".-")
+        if not token or token in _TITLE_STOPWORDS:
+            continue
+        if len(token) < 2 and not token.isdigit():
+            continue
+        tokens.add(token)
+    return tokens
+
+
+def _extract_cve_ids(title: str) -> set[str]:
+    """Extract normalized uppercase CVE identifiers from a title."""
+    if not isinstance(title, str) or not title:
+        return set()
+    return {match.upper() for match in _CVE_ID_RE.findall(title)}
+
+
+def is_near_duplicate(
+    title: str,
+    previous_titles: Iterable[str],
+    threshold: float = 0.6,
+) -> Optional[str]:
+    """
+    Return the first title in previous_titles that is a near duplicate of title,
+    or None if no match is found.
+
+    Two titles match when they share any CVE identifier (case-insensitive) or when
+    the Jaccard similarity of their normalized token sets is >= threshold.
+    """
+    if not isinstance(title, str) or not title.strip():
+        return None
+
+    title_cves = _extract_cve_ids(title)
+    title_tokens = normalize_title_tokens(title)
+    if not title_cves and not title_tokens:
+        return None
+
+    for prev_title in previous_titles:
+        if not isinstance(prev_title, str) or not prev_title.strip():
+            continue
+
+        if title_cves:
+            prev_cves = _extract_cve_ids(prev_title)
+            if title_cves & prev_cves:
+                return prev_title
+
+        if title_tokens:
+            prev_tokens = normalize_title_tokens(prev_title)
+            if prev_tokens:
+                union_size = len(title_tokens | prev_tokens)
+                if union_size > 0 and (len(title_tokens & prev_tokens) / union_size) >= threshold:
+                    return prev_title
+
+    return None
+
+
+def deduplicate_curated_items(
+    curated_items: List[CuratedNewsItem],
+    recent_titles: Iterable[str],
+    threshold: float = 0.6,
+) -> Tuple[List[CuratedNewsItem], int]:
+    """
+    Drop curated items that are near duplicates of recently published titles or
+    of items already kept earlier in the same run.
+    """
+    comparison_titles: List[str] = list(recent_titles or [])
+    kept_items: List[CuratedNewsItem] = []
+    dropped_count = 0
+
+    for item in curated_items:
+        matched_title = is_near_duplicate(
+            item.title,
+            comparison_titles,
+            threshold=threshold,
+        )
+        if matched_title is not None:
+            dropped_count += 1
+            logger.info(
+                "Dropped duplicate curated item '%s' (matched '%s').",
+                item.title,
+                matched_title,
+            )
+            continue
+        kept_items.append(item)
+        comparison_titles.append(item.title)
+
+    return kept_items, dropped_count
+
+
 def record_seen_sources(supabase_client: Client, source_ids: List[str]) -> None:
     """Upsert all candidate source_ids into public.seen_sources so rejected items never loop back."""
     if not source_ids:
@@ -1410,6 +1537,7 @@ def format_run_report_markdown(report: Dict[str, Any]) -> str:
     gemini_model = report.get("gemini_model") or "none"
     curated_count = report.get("curated_count", 0)
     breaking_count = report.get("breaking_count", 0)
+    dropped_duplicates = report.get("dropped_duplicates", 0)
     failed_display = ", ".join(failed_sources) if failed_sources else "none"
     run_status = report.get("status") or "unknown"
 
@@ -1420,6 +1548,7 @@ def format_run_report_markdown(report: Dict[str, Any]) -> str:
         f"- Unseen candidates: {unseen_display}",
         f"- Gemini model: {gemini_model}",
         f"- Curated items: {curated_count} ({breaking_count} breaking)",
+        f"- Dropped as duplicates: {dropped_duplicates}",
         "",
         "### Curated Titles",
         "",
@@ -1527,6 +1656,7 @@ def main() -> None:
         "gemini_model": None,
         "curated_count": 0,
         "breaking_count": 0,
+        "dropped_duplicates": 0,
         "curated_titles": [],
         "status": "running",
     }
@@ -1614,9 +1744,14 @@ def main() -> None:
             gemini_api_key=gemini_api_key,
             recent_titles=recent_titles,
         )
+        curated_items, dropped_duplicates = deduplicate_curated_items(
+            curated_items,
+            recent_titles,
+        )
         report["gemini_model"] = LAST_GEMINI_MODEL
         report["curated_count"] = len(curated_items)
         report["breaking_count"] = sum(1 for item in curated_items if item.is_breaking)
+        report["dropped_duplicates"] = dropped_duplicates
         report["curated_titles"] = [
             f"[BREAKING] {item.title}" if item.is_breaking else item.title
             for item in curated_items
