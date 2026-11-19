@@ -23,6 +23,11 @@ const REPO_ROOT = path.resolve(__dirname, '..', '..');
 const BASE_URL = (process.env.BASE_URL || 'http://localhost:3005').replace(/\/+$/, '');
 const SUPABASE_GLOB = 'https://example.supabase.co/**';
 const VIEWPORT = { width: 375, height: 812 };
+const OVERFLOW_VIEWPORTS = [
+  { width: 360, height: 780 },
+  { width: 375, height: 812 },
+];
+const MAX_RIGHT_OVERFLOW_PX = 0.5;
 
 function readPythonCardCount() {
   const pythonCardsPath = path.join(REPO_ROOT, 'lib', 'practice', 'cards', 'python.json');
@@ -206,19 +211,27 @@ async function swipeCard(page, locator, direction) {
   }
 }
 
-async function checkNoHorizontalOverflow(page, pageLabel) {
-  const report = await page.evaluate(() => {
+async function checkNoHorizontalOverflowAtViewport(page, pageLabel, viewport) {
+  await page.setViewportSize(viewport);
+  const report = await page.evaluate(async (maxRightOverflowPx) => {
+    if (document.fonts && document.fonts.ready) {
+      await document.fonts.ready;
+    }
+    await new Promise((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(resolve))
+    );
+
     const viewportWidth = window.innerWidth;
     const docScrollWidth = document.documentElement.scrollWidth;
     const bodyScrollWidth = document.body ? document.body.scrollWidth : 0;
     const issues = [];
 
-    if (docScrollWidth > viewportWidth + 1) {
+    if (docScrollWidth > viewportWidth + maxRightOverflowPx) {
       issues.push(
         `documentElement.scrollWidth (${docScrollWidth}) exceeds viewport (${viewportWidth})`
       );
     }
-    if (bodyScrollWidth > viewportWidth + 1) {
+    if (bodyScrollWidth > viewportWidth + maxRightOverflowPx) {
       issues.push(
         `body.scrollWidth (${bodyScrollWidth}) exceeds viewport (${viewportWidth})`
       );
@@ -256,23 +269,56 @@ async function checkNoHorizontalOverflow(page, pageLabel) {
       if (rect.width === 0 || rect.height === 0) continue;
       if (isClippedByAncestor(el)) continue;
 
-      if (rect.width > viewportWidth + 1 || rect.right > viewportWidth + 1 || rect.left < -1) {
+      if (
+        rect.width > viewportWidth + maxRightOverflowPx ||
+        rect.right > viewportWidth + maxRightOverflowPx ||
+        rect.left < -maxRightOverflowPx
+      ) {
         const tag = el.tagName.toLowerCase();
         const idPart = el.id ? `#${el.id}` : '';
         const testId = el.getAttribute('data-testid');
         const testIdPart = testId ? `[data-testid="${testId}"]` : '';
         issues.push(
-          `${tag}${idPart}${testIdPart} (left=${Math.round(rect.left)}, right=${Math.round(rect.right)}, width=${Math.round(rect.width)}, viewport=${viewportWidth})`
+          `${tag}${idPart}${testIdPart} (left=${Number(rect.left.toFixed(1))}, right=${Number(rect.right.toFixed(1))}, width=${Number(rect.width.toFixed(1))}, viewport=${viewportWidth})`
         );
         if (issues.length >= 5) break;
       }
     }
 
     return { issues };
-  });
+  }, MAX_RIGHT_OVERFLOW_PX);
 
   if (report.issues.length > 0) {
-    throw new Error(`${pageLabel}: ${report.issues.join('; ')}`);
+    throw new Error(
+      `${pageLabel} @ ${viewport.width}x${viewport.height}: ${report.issues.join('; ')}`
+    );
+  }
+}
+
+async function checkNoHorizontalOverflow(page, pageLabel, viewports = OVERFLOW_VIEWPORTS) {
+  const originalViewport = page.viewportSize() || VIEWPORT;
+  const errors = [];
+  try {
+    for (const viewport of viewports) {
+      try {
+        await checkNoHorizontalOverflowAtViewport(page, pageLabel, viewport);
+      } catch (err) {
+        errors.push(err instanceof Error ? err.message : String(err));
+      }
+    }
+  } finally {
+    const current = page.viewportSize();
+    if (
+      !current ||
+      current.width !== originalViewport.width ||
+      current.height !== originalViewport.height
+    ) {
+      await page.setViewportSize(originalViewport);
+    }
+  }
+
+  if (errors.length > 0) {
+    throw new Error(errors.join(' | '));
   }
 }
 
@@ -630,7 +676,7 @@ async function main() {
       }
     });
 
-    await runCheck('No element wider than viewport (no horizontal scroll) on feed or practice', async () => {
+    await runCheck('No element wider than viewport (no horizontal scroll) on feed or practice at 360x780 and 375x812', async () => {
       const errors = [];
       if (!checkedFeedOverflow) {
         errors.push(new Error('Feed (/) overflow check did not run'));

@@ -418,27 +418,27 @@ export default function HomePage() {
             isDusk ? 'bg-[#1E1B29] border-[#342F46]' : 'bg-[#E5DFD3] border-[#D2C9B8]'
           }`}
         >
-          <div className="flex items-center justify-between mb-2.5">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-amber-500 via-rose-500 to-violet-600 flex items-center justify-center text-white shadow-md shadow-rose-500/20">
+          <div className="flex items-center justify-between gap-2 mb-2.5">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-10 h-10 shrink-0 rounded-2xl bg-gradient-to-tr from-amber-500 via-rose-500 to-violet-600 flex items-center justify-center text-white shadow-md shadow-rose-500/20">
                 <BoltIcon className="w-5 h-5" />
               </div>
-              <div>
-                <div className="flex items-center gap-1.5">
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5 min-w-0">
                   <span
                     data-testid="time-greeting-badge"
-                    className={`inline-flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border shadow-2xs ${
+                    className={`inline-flex items-center gap-1 min-w-0 max-w-full text-[11px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border shadow-2xs ${
                       isDusk
                         ? 'bg-[#2A263A] text-[#D8D2E7] border-[#3E3852]'
                         : 'bg-[#EDE8DF] text-[#4A443E] border-[#D2C9B8]'
                     }`}
                   >
                     <GreetingIcon className="w-3 h-3 shrink-0" />
-                    <span>{clientTime ? clientTime.badge : DEFAULT_GREETING_BADGE}</span>
+                    <span className="truncate">{clientTime ? clientTime.badge : DEFAULT_GREETING_BADGE}</span>
                   </span>
                 </div>
                 <h1
-                  className={`text-2xl font-black tracking-tight leading-tight mt-0.5 ${
+                  className={`truncate text-2xl font-black tracking-tight leading-tight mt-0.5 ${
                     isDusk ? 'text-[#F0ECF8]' : 'text-[#2A2623]'
                   }`}
                 >
@@ -447,7 +447,7 @@ export default function HomePage() {
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 shrink-0">
               {/* Solved CTF labs link */}
               <Link
                 href="/solved"
@@ -480,21 +480,19 @@ export default function HomePage() {
                 onClick={toggleTheme}
                 whileTap={{ scale: 0.92 }}
                 whileHover={{ y: -1 }}
-                className={`inline-flex items-center justify-center min-h-[40px] px-3 py-1.5 rounded-2xl text-xs font-bold border transition-all touch-manipulation cursor-pointer shadow-xs ${focusRingClass} ${
+                className={`inline-flex items-center justify-center min-w-[40px] min-h-[40px] p-2.5 rounded-2xl border transition-all touch-manipulation cursor-pointer shadow-xs ${focusRingClass} ${
                   isDusk
                     ? 'bg-[#2A263A] text-[#EAE6F2] border-[#3E3852] hover:bg-[#353048]'
                     : 'bg-[#EDE8DF] text-[#2A2623] border-[#D2C9B8] hover:bg-[#E2DBD0]'
                 }`}
                 aria-label="Toggle Reading Theme"
+                title={isDusk ? 'Dusk' : 'Paper'}
               >
-                <span className="inline-flex items-center gap-1.5">
-                  {isDusk ? (
-                    <SunsetIcon className="w-3.5 h-3.5 shrink-0" />
-                  ) : (
-                    <CoffeeIcon className="w-3.5 h-3.5 shrink-0" />
-                  )}
-                  <span>{isDusk ? 'Dusk' : 'Paper'}</span>
-                </span>
+                {isDusk ? (
+                  <SunsetIcon className="w-4 h-4" />
+                ) : (
+                  <CoffeeIcon className="w-4 h-4" />
+                )}
               </motion.button>
 
               {/* Refresh Button */}
