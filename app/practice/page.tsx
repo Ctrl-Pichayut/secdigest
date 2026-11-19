@@ -10,6 +10,7 @@ import { usePractice, type SyncStatus } from '@/lib/practice/store';
 import { presetIdFor, usePracticeSettings, WEIGHT_PRESETS } from '@/lib/practice/settings';
 import { ACTIVE_LANGS, LANG_META, type SessionMode } from '@/lib/practice/types';
 import PracticeSession from '@/components/practice/PracticeSession';
+import PracticeCalendar from '@/components/practice/PracticeCalendar';
 import MissedCardsPanel from '@/components/practice/MissedCardsPanel';
 import TopicProgressPanel from '@/components/practice/TopicProgressPanel';
 import { GoalBar, palette } from '@/components/practice/ui';
@@ -162,6 +163,9 @@ export default function PracticePage() {
               Missed days don&apos;t reset anything. Any {settings.weeklyGoal} session{settings.weeklyGoal === 1 ? '' : 's'} this week count, on any days.
             </p>
           </div>
+
+          {/* Activity calendar */}
+          {ready && <PracticeCalendar sessions={sessions} isDusk={isDusk} />}
         </header>
 
         <main className="flex-1 px-4 py-4 space-y-4">

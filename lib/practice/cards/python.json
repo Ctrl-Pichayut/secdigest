@@ -1701,6 +1701,206 @@
     "expectOutput": "1.1.1.1"
   },
   {
+    "id": "py-109",
+    "lang": "python",
+    "topic": "Cloud security with Python",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import json\nraw = ('{\"Statement\": ['\n       '{\"Sid\": \"A\", \"Effect\": \"Allow\", \"Action\": \"s3:GetObject\", \"Resource\": \"*\"},'\n       '{\"Sid\": \"B\", \"Effect\": \"Allow\", \"Action\": \"*\", \"Resource\": \"*\"},'\n       '{\"Sid\": \"C\", \"Effect\": \"Deny\", \"Action\": \"*\", \"Resource\": \"*\"}]}')\nstmts = json.loads(raw)['Statement']\nwide = [s['Sid'] for s in stmts\n        if s['Effect'] == 'Allow' and '*' in (s['Action'], s['Resource'])]\nprint(wide)",
+    "choices": [
+      "['A', 'B']",
+      "['B']",
+      "['A', 'B', 'C']",
+      "['B', 'C']"
+    ],
+    "answer": 0,
+    "explanation": "json.loads() parses the IAM policy into nested dicts and lists. Statements A and B both have Effect 'Allow' with a '*' wildcard in Action or Resource, while C is a Deny statement and is skipped. Flagging wildcard Allows is a standard first check for overly broad cloud permissions."
+  },
+  {
+    "id": "py-110",
+    "lang": "python",
+    "topic": "Cloud security with Python",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "def as_list(val):\n    return [val] if isinstance(val, str) else list(val)\n\nstmts = [\n    {'Action': 's3:GetObject'},\n    {'Action': ['s3:PutObject', 's3:DeleteObject']},\n]\nactions = [a for s in stmts for a in as_list(s['Action'])]\nprint(len(actions), actions[0])",
+    "choices": [
+      "3 s3:GetObject",
+      "14 s",
+      "2 s3:GetObject",
+      "TypeError"
+    ],
+    "answer": 0,
+    "explanation": "In AWS IAM JSON, fields like Action and Resource can be either a single string or a list of strings. Wrapping a string in [val] prevents iterating over its characters one by one, which would have yielded 14 items starting with 's'. Normalising inputs first keeps policy checks simple and bug-free."
+  },
+  {
+    "id": "py-111",
+    "lang": "python",
+    "topic": "Cloud security with Python",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import fnmatch\na = fnmatch.fnmatchcase('s3:GetObject', 's3:Get*')\nb = fnmatch.fnmatchcase('s3:GetObject', 's3:get*')\nc = fnmatch.fnmatchcase('s3:DeleteBucket', 's3:*')\nprint(a, b, c)",
+    "choices": [
+      "True False True",
+      "True True True",
+      "True False False",
+      "False False True"
+    ],
+    "answer": 0,
+    "explanation": "fnmatch.fnmatchcase() performs case-sensitive wildcard matching, so 's3:Get*' matches 's3:GetObject' while 's3:get*' does not. A service-wide wildcard like 's3:*' is dangerous because it also matches destructive actions such as 's3:DeleteBucket' and policy changes. Grant only the narrowest action prefix or explicit action names required."
+  },
+  {
+    "id": "py-112",
+    "lang": "python",
+    "topic": "Cloud security with Python",
+    "kind": "bug",
+    "prompt": "This read-only worker policy allows overwriting and deleting objects in the bucket. Which line violates least privilege?",
+    "lines": [
+      "def build_reader_policy(bucket):",
+      "    return {",
+      "        'Version': '2012-10-17',",
+      "        'Statement': [{",
+      "            'Effect': 'Allow',",
+      "            'Action': '*',",
+      "            'Resource': f'arn:aws:s3:::{bucket}/*',",
+      "        }],",
+      "    }"
+    ],
+    "bugLine": 5,
+    "fixedLine": "            'Action': 's3:GetObject',",
+    "explanation": "Using 'Action': '*' grants every action on those objects, including PutObject and DeleteObject, far beyond read-only access. Replacing it with 's3:GetObject' enforces least privilege so the worker can only fetch objects. Scoped actions shrink the blast radius if the role's credentials are leaked."
+  },
+  {
+    "id": "py-113",
+    "lang": "python",
+    "topic": "Cloud security with Python",
+    "kind": "order",
+    "prompt": "Put the lines in order so explicit Deny overrides Allow and this prints False True.",
+    "lines": [
+      "def is_allowed(policy, act):",
+      "    if act in policy.get('Deny', ()):",
+      "        return False",
+      "    return act in policy.get('Allow', ())",
+      "pol = {'Allow': {'s3:Get', 's3:List'}, 'Deny': {'s3:Get'}}",
+      "print(is_allowed(pol, 's3:Get'), is_allowed(pol, 's3:List'))"
+    ],
+    "explanation": "In IAM policy evaluation, an explicit Deny always overrides any Allow, and anything not matched is denied by default. Checking policy.get('Deny', ()) first ensures 's3:Get' returns False even though it is also listed under Allow. 's3:List' is not denied and appears in Allow, so it returns True.",
+    "expectOutput": "False True"
+  },
+  {
+    "id": "py-114",
+    "lang": "python",
+    "topic": "Cloud security with Python",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "def is_public(s):\n    p = s.get('Principal')\n    any_p = p == '*' or (isinstance(p, dict) and p.get('AWS') == '*')\n    return s.get('Effect') == 'Allow' and any_p\nstmts = [\n    {'Effect': 'Allow', 'Principal': '*'},\n    {'Effect': 'Allow', 'Principal': {'AWS': '*'}},\n    {'Effect': 'Deny', 'Principal': '*'},\n]\nprint([is_public(s) for s in stmts])",
+    "choices": [
+      "[True, True, False]",
+      "[True, False, False]",
+      "[True, True, True]",
+      "[True, False, True]"
+    ],
+    "answer": 0,
+    "explanation": "An S3 bucket policy can specify a public principal as either '*' or {'AWS': '*'}, so checking both catches both forms. Requiring Effect == 'Allow' avoids false positives on Deny guardrails (such as denying non-HTTPS requests from '*'). Thus only the first two statements expose the bucket publicly."
+  },
+  {
+    "id": "py-115",
+    "lang": "python",
+    "topic": "Cloud security with Python",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import ipaddress\nworld = ipaddress.ip_network('0.0.0.0/0')\nrules = [\n    ('ssh', '0.0.0.0/0', 22, 22),\n    ('int', '10.0.0.0/8', 22, 22),\n    ('web', '0.0.0.0/0', 443, 443),\n]\nbad = [name for name, cidr, lo, hi in rules\n       if ipaddress.ip_network(cidr) == world and lo <= 22 <= hi]\nprint(bad)",
+    "choices": [
+      "['ssh']",
+      "['ssh', 'int']",
+      "['ssh', 'web']",
+      "['ssh', 'int', 'web']"
+    ],
+    "answer": 0,
+    "explanation": "0.0.0.0/0 represents the entire IPv4 internet, so comparing parsed networks against ip_network('0.0.0.0/0') catches world-open security group rules. Combining that check with lo <= 22 <= hi isolates rules exposing SSH, skipping the private 10.0.0.0/8 rule and public HTTPS on port 443."
+  },
+  {
+    "id": "py-116",
+    "lang": "python",
+    "topic": "Cloud security with Python",
+    "kind": "bug",
+    "prompt": "A security group rule allowing ports 0-65535 from 0.0.0.0/0 passes this SSH audit without alerting. Which line is wrong?",
+    "lines": [
+      "def exposes_ssh(rule):",
+      "    net = ipaddress.ip_network(rule['cidr'])",
+      "    if net.prefixlen != 0:",
+      "        return False",
+      "    return rule['from_port'] == 22"
+    ],
+    "bugLine": 4,
+    "fixedLine": "    return rule['from_port'] <= 22 <= rule['to_port']",
+    "explanation": "Checking rule['from_port'] == 22 only matches rules that start on port 22, missing broad ranges like 0-65535 or 1-1024 that still expose SSH. Use a range check (rule['from_port'] <= 22 <= rule['to_port']) so any rule covering port 22 is flagged. Note that net.prefixlen == 0 catches both 0.0.0.0/0 and ::/0."
+  },
+  {
+    "id": "py-117",
+    "lang": "python",
+    "topic": "Cloud security with Python",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import re\npat = re.compile(r'\\bAKIA[A-Z0-9]{16}\\b')\ncfg = {\n    'APP_ENV': 'prod',\n    'AWS_KEY': 'AKIAEXAMPLEEXAMPLE00',\n    'BAD_LEN': 'AKIA12345',\n}\nhits = [k for k, v in cfg.items() if pat.search(v)]\nprint(hits)",
+    "choices": [
+      "['AWS_KEY']",
+      "['AWS_KEY', 'BAD_LEN']",
+      "['AKIAEXAMPLEEXAMPLE00']",
+      "[]"
+    ],
+    "answer": 0,
+    "explanation": "AWS long-term IAM access key IDs start with AKIA followed by 16 uppercase alphanumeric characters (20 characters total). The regex matches AWS_KEY's value and ignores BAD_LEN because it is too short, while the comprehension collects matching dict keys. Scanning config dicts and repositories for key patterns helps catch leaked credentials before commit."
+  },
+  {
+    "id": "py-118",
+    "lang": "python",
+    "topic": "Cloud security with Python",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "arn = 'arn:aws:lambda:us-east-1:123456789012:function:audit:prod'\n_, part, svc, reg, acct, res = arn.split(':', 5)\nprint(svc, acct, res)",
+    "choices": [
+      "lambda 123456789012 function:audit:prod",
+      "ValueError",
+      "lambda 123456789012 function",
+      "aws us-east-1 123456789012"
+    ],
+    "answer": 0,
+    "explanation": "An AWS ARN has six colon-separated fields: arn, partition, service, region, account, and resource. Passing maxsplit=5 to split(':', 5) keeps colons inside the resource field ('function:audit:prod') intact instead of splitting them into extra items and raising ValueError on unpacking."
+  },
+  {
+    "id": "py-119",
+    "lang": "python",
+    "topic": "Cloud security with Python",
+    "kind": "bug",
+    "prompt": "Auditing an untagged cloud instance raises KeyError and aborts the scan. Which line is wrong?",
+    "lines": [
+      "def missing_prod_owner(instance):",
+      "    tags = instance.get('Tags', {})",
+      "    if tags['Env'] != 'prod':",
+      "        return False",
+      "    return not tags.get('Owner')"
+    ],
+    "bugLine": 2,
+    "fixedLine": "    if tags.get('Env', 'dev') != 'prod':",
+    "explanation": "Accessing tags['Env'] directly raises KeyError on resources that lack an Env tag, crashing the entire compliance sweep. Use tags.get('Env', 'dev') so missing tags fall back to a safe default instead of failing. Defensive .get() lookups are essential when scanning inconsistent cloud inventories."
+  },
+  {
+    "id": "py-120",
+    "lang": "python",
+    "topic": "Cloud security with Python",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "from datetime import datetime, timedelta\nnow = datetime.fromisoformat('2026-06-01T00:00:00+00:00')\nkeys = [\n    ('k1', '2025-12-01T00:00:00+00:00'),\n    ('k2', '2026-02-01T00:00:00+00:00'),\n    ('k3', '2026-05-01T00:00:00+00:00'),\n]\nstale = [k for k, ts in keys\n         if now - datetime.fromisoformat(ts) > timedelta(days=90)]\nprint(stale)",
+    "choices": [
+      "['k1', 'k2']",
+      "['k1']",
+      "['k3']",
+      "['k1', 'k2', 'k3']"
+    ],
+    "answer": 0,
+    "explanation": "Subtracting two timezone-aware datetime objects returns a timedelta that compares directly with timedelta(days=90). k1 (182 days old) and k2 (120 days old) exceed the 90-day rotation threshold, while k3 is only 31 days old. Auditing IAM access key age helps enforce regular credential rotation."
+  },
+  {
     "id": "py-058",
     "lang": "python",
     "topic": "CTF toolbox",

@@ -75,6 +75,74 @@ export function getCtfCountdown(startDateStr: string | null): string | null {
   }
 }
 
+export function getSourceHost(url: string | null | undefined): string | null {
+  if (!url) return null;
+  const trimmed = url.trim();
+  if (!trimmed) return null;
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return null;
+    }
+    const host = parsed.hostname.toLowerCase().replace(/^www\.(?=.*\.)/, '');
+    return host || null;
+  } catch {
+    return null;
+  }
+}
+
+function formatShortDate(date: Date, now: Date): string {
+  const options: Intl.DateTimeFormatOptions =
+    date.getFullYear() === now.getFullYear()
+      ? { month: 'short', day: 'numeric' }
+      : { month: 'short', day: 'numeric', year: 'numeric' };
+  return date.toLocaleDateString('en-US', options);
+}
+
+export function formatRelativeAge(
+  createdAt: string | null | undefined,
+  now: Date = new Date()
+): string | null {
+  if (!createdAt) return null;
+  const created = new Date(createdAt);
+  if (Number.isNaN(created.getTime())) return null;
+
+  const diffMs = now.getTime() - created.getTime();
+
+  if (diffMs < 60_000) {
+    if (diffMs < -5 * 60_000) {
+      return formatShortDate(created, now);
+    }
+    return 'just now';
+  }
+
+  const diffMins = Math.floor(diffMs / 60_000);
+  if (diffMins < 60) {
+    return `${diffMins}m ago`;
+  }
+
+  const diffHours = Math.floor(diffMs / 3_600_000);
+  if (diffHours < 24) {
+    return `${diffHours}h ago`;
+  }
+
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const startOfCreated = new Date(
+    created.getFullYear(),
+    created.getMonth(),
+    created.getDate()
+  );
+  const calendarDays = Math.round(
+    (startOfToday.getTime() - startOfCreated.getTime()) / 86_400_000
+  );
+
+  if (calendarDays === 1) {
+    return 'yesterday';
+  }
+
+  return formatShortDate(created, now);
+}
+
 export default function NewsCard({
   item,
   onToggleBookmark,
@@ -83,9 +151,16 @@ export default function NewsCard({
 }: NewsCardProps) {
   // Independent per-card Thai translation state
   const [isThai, setIsThai] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const countdown = getCtfCountdown(item.event_start_date);
+  const sourceHost = getSourceHost(item.url);
+  const relativeAge = mounted ? formatRelativeAge(item.created_at) : null;
   const hasThai = Boolean(item.tldr_th);
   const isBreaking = Boolean(item.is_breaking);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const isDusk = theme === 'dusk';
 
@@ -448,12 +523,41 @@ export default function NewsCard({
 
       {/* Post Title (100% crisp typography, zero dimming) */}
       <h2
-        className={`text-[17px] font-extrabold leading-snug tracking-tight mb-2 ${
-          isDusk ? 'text-[#F2EFFA]' : 'text-[#2A2623]'
-        }`}
+        className={`text-[17px] font-extrabold leading-snug tracking-tight ${
+          sourceHost || relativeAge ? 'mb-1' : 'mb-2'
+        } ${isDusk ? 'text-[#F2EFFA]' : 'text-[#2A2623]'}`}
       >
         {item.title}
       </h2>
+
+      {/* Muted Source Host & Relative Age Meta Line */}
+      {(sourceHost || relativeAge) && (
+        <div
+          data-testid={`meta-line-${item.id}`}
+          className={`flex items-center gap-1.5 min-w-0 mb-2.5 text-[11px] sm:text-xs font-medium leading-tight ${
+            isDusk ? 'text-[#A9A0C0]' : 'text-[#635C55]'
+          }`}
+        >
+          {sourceHost && (
+            <span className="truncate min-w-0" title={sourceHost}>
+              {sourceHost}
+            </span>
+          )}
+          {sourceHost && relativeAge && (
+            <span aria-hidden="true" className="shrink-0">
+              &middot;
+            </span>
+          )}
+          {relativeAge && (
+            <time
+              dateTime={item.created_at}
+              className="shrink-0 whitespace-nowrap"
+            >
+              {relativeAge}
+            </time>
+          )}
+        </div>
+      )}
 
       {/* TLDR Summary (Instant swap with animation) */}
       <AnimatePresence mode="wait">
