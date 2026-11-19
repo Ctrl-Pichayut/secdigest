@@ -6,8 +6,8 @@ import RegisterServiceWorker from '@/components/RegisterServiceWorker';
 
 // Runs before first paint: sets html[data-theme] and paints the body dark for
 // dusk users while CSS keeps #__app hidden until client theme state is applied.
-// Includes a 300ms fallback so content can never remain hidden.
-const themeInitScript = `(function(){var d=document.documentElement;try{var t=localStorage.getItem('secdigest_theme')==='dusk'?'dusk':'paper';d.dataset.theme=t;if(t==='dusk'){document.body.style.backgroundColor='#1E1B29';document.body.style.color='#EAE6F2';var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('content','#1E1B29');setTimeout(function(){if(!d.dataset.themeReady)d.dataset.themeReady='1';},300);}}catch(e){d.dataset.theme='paper';d.dataset.themeReady='1';}})();`;
+// Includes a 1500ms fallback so content can never remain hidden.
+const themeInitScript = `(function(){var d=document.documentElement;try{var t=localStorage.getItem('secdigest_theme')==='dusk'?'dusk':'paper';d.dataset.theme=t;if(t==='dusk'){document.body.style.backgroundColor='#1E1B29';document.body.style.color='#EAE6F2';var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('content','#1E1B29');setTimeout(function(){if(!d.dataset.themeReady)d.dataset.themeReady='1';},1500);}}catch(e){d.dataset.theme='paper';d.dataset.themeReady='1';}})();`;
 
 export const metadata: Metadata = {
   title: 'SecDigest | CyberSec & Tech Intelligence',

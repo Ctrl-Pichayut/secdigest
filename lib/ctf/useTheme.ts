@@ -22,6 +22,7 @@ const SERVER_SNAPSHOT: Theme = 'paper';
 
 let current: Theme = SERVER_SNAPSHOT;
 let initialized = false;
+let readyScheduled = false;
 const listeners = new Set<() => void>();
 
 function emit() {
@@ -50,8 +51,27 @@ function readInitial(): Theme {
 
 function markThemeReady() {
   if (typeof document === 'undefined') return;
+  readyScheduled = false;
   if (document.documentElement.dataset.themeReady !== '1') {
     document.documentElement.dataset.themeReady = '1';
+  }
+}
+
+function scheduleThemeReady() {
+  if (typeof document === 'undefined') return;
+  if (document.documentElement.dataset.themeReady === '1' || readyScheduled) return;
+  readyScheduled = true;
+  // Flush computed dusk styles while transition: none is active so elements
+  // snap immediately without starting a paper-to-dusk color transition.
+  void document.documentElement.offsetWidth;
+  if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        markThemeReady();
+      });
+    });
+  } else {
+    markThemeReady();
   }
 }
 
@@ -129,13 +149,18 @@ function setTheme(next: Theme) {
 export function useTheme() {
   const theme = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 
-  // Sync document chrome and reveal #__app once the rendered theme matches the
-  // client snapshot (after React finishes the post-hydration dusk sync).
+  // Sync document chrome and reveal #__app only after the dusk classes have
+  // painted with transitions disabled so Tailwind transition-colors cannot
+  // interpolate from paper to dusk.
   useEffect(() => {
     const expected = getSnapshot();
     applyChrome(expected);
     if (theme === expected) {
-      markThemeReady();
+      if (expected === 'dusk') {
+        scheduleThemeReady();
+      } else {
+        markThemeReady();
+      }
     }
   }, [theme]);
 
