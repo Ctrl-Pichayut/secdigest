@@ -1065,10 +1065,114 @@ _TITLE_STOPWORDS: Set[str] = {
     "its",
     "new",
     "now",
+    "via",
+}
+
+_GENERIC_TITLE_TOKENS: Set[str] = {
+    "critical",
+    "remote",
+    "code",
+    "execution",
+    "rce",
+    "vulnerability",
+    "vulnerabilities",
+    "flaw",
+    "flaws",
+    "security",
+    "patch",
+    "patches",
+    "fix",
+    "fixes",
+    "free",
+    "model",
+    "models",
+    "release",
+    "releases",
+    "released",
+    "launch",
+    "launches",
+    "introduces",
+    "adds",
+    "disclosed",
+    "discloses",
+    "exploited",
+    "exploitation",
+    "wild",
+    "injection",
+    "command",
+    "authentication",
+    "bypass",
+    "arbitrary",
+    "file",
+    "read",
+    "write",
+    "path",
+    "traversal",
+    "memory",
+    "corruption",
+    "denial",
+    "service",
+    "dos",
+    "privilege",
+    "escalation",
+    "unauthenticated",
+    "pre-authentication",
+    "ctf",
+    "jeopardy",
+    "competition",
+    "challenge",
+    "high-weight",
+    "llm",
+    "llms",
+    "ai",
+    "agentic",
+    "coding",
+    "agent",
+    "agents",
+    "open-source",
+    "multimodal",
+    "reasoning",
+    "context",
+    "window",
+    "token",
+    "tokens",
+    "incident",
+    "outage",
+    "cloud",
+    "data",
+    "server",
+    "update",
+    "updates",
+    "official",
+    "support",
+    "advanced",
 }
 
 _TITLE_PUNCT_RE = re.compile(r"(?:[^\w\s.-]|_|[.-]{2,})")
 _CVE_ID_RE = re.compile(r"CVE-\d{4}-\d{4,}", re.IGNORECASE)
+_NAMED_TOKEN_RE = re.compile(r"^[a-z]+\d+[a-z][a-z0-9-]*$", re.ASCII)
+_NUMERIC_TOKEN_RE = re.compile(r"^\d+(?:\.\d+)*$", re.ASCII)
+
+
+def title_token_list(title: str) -> list[str]:
+    """
+    Normalize a title into an ordered list of meaningful lowercase tokens.
+    Preserves version-like tokens (e.g. '4', '5.2', 'cve-2026-1234') while stripping
+    punctuation, common English stopwords, and non-numeric single-character tokens.
+    """
+    if not isinstance(title, str) or not title:
+        return []
+
+    cleaned = _TITLE_PUNCT_RE.sub(" ", title.lower())
+    tokens: list[str] = []
+    for raw_token in cleaned.split():
+        token = raw_token.strip(".-")
+        if not token or token in _TITLE_STOPWORDS:
+            continue
+        if len(token) < 2 and not token.isdigit():
+            continue
+        tokens.append(token)
+    return tokens
 
 
 def normalize_title_tokens(title: str) -> set[str]:
@@ -1077,19 +1181,7 @@ def normalize_title_tokens(title: str) -> set[str]:
     Preserves version-like tokens (e.g. '4', '5.2', 'cve-2026-1234') while stripping
     punctuation, common English stopwords, and non-numeric single-character tokens.
     """
-    if not isinstance(title, str) or not title:
-        return set()
-
-    cleaned = _TITLE_PUNCT_RE.sub(" ", title.lower())
-    tokens: set[str] = set()
-    for raw_token in cleaned.split():
-        token = raw_token.strip(".-")
-        if not token or token in _TITLE_STOPWORDS:
-            continue
-        if len(token) < 2 and not token.isdigit():
-            continue
-        tokens.add(token)
-    return tokens
+    return set(title_token_list(title))
 
 
 def _extract_cve_ids(title: str) -> set[str]:
@@ -1097,6 +1189,38 @@ def _extract_cve_ids(title: str) -> set[str]:
     if not isinstance(title, str) or not title:
         return set()
     return {match.upper() for match in _CVE_ID_RE.findall(title)}
+
+
+def _extract_named_tokens(tokens: Iterable[str]) -> set[str]:
+    """Extract named tokens (e.g. 'java4shell') matching the named-token pattern with length >= 6."""
+    return {
+        token
+        for token in tokens
+        if len(token) >= 6 and _NAMED_TOKEN_RE.match(token) is not None
+    }
+
+
+def _is_distinctive_token(token: str) -> bool:
+    """Return True if token is neither purely numeric/dotted-numeric nor in _GENERIC_TITLE_TOKENS."""
+    if not token or token in _GENERIC_TITLE_TOKENS:
+        return False
+    return _NUMERIC_TOKEN_RE.match(token) is None
+
+
+def _extract_distinctive_trigrams(tokens: list[str]) -> set[Tuple[str, str, str]]:
+    """
+    Extract consecutive word trigrams from an ordered token list where at least 2 of
+    the 3 tokens are distinctive (not purely numeric/dotted-numeric and not generic).
+    """
+    if len(tokens) < 3:
+        return set()
+
+    trigrams: set[Tuple[str, str, str]] = set()
+    for i in range(len(tokens) - 2):
+        tri = (tokens[i], tokens[i + 1], tokens[i + 2])
+        if sum(1 for tok in tri if _is_distinctive_token(tok)) >= 2:
+            trigrams.add(tri)
+    return trigrams
 
 
 def is_near_duplicate(
@@ -1108,16 +1232,23 @@ def is_near_duplicate(
     Return the first title in previous_titles that is a near duplicate of title,
     or None if no match is found.
 
-    Two titles match when they share any CVE identifier (case-insensitive) or when
-    the Jaccard similarity of their normalized token sets is >= threshold.
+    Two titles match when any of the following hold:
+    1. They share any CVE identifier (case-insensitive).
+    2. The Jaccard similarity of their normalized token sets is >= threshold.
+    3. They share a named token matching ^[a-z]+\\d+[a-z][a-z0-9-]*$ with length >= 6.
+    4. They share a consecutive normalized word trigram with at least 2 distinctive tokens.
     """
     if not isinstance(title, str) or not title.strip():
         return None
 
     title_cves = _extract_cve_ids(title)
-    title_tokens = normalize_title_tokens(title)
+    title_list = title_token_list(title)
+    title_tokens = set(title_list)
     if not title_cves and not title_tokens:
         return None
+
+    title_named = _extract_named_tokens(title_tokens)
+    title_trigrams = _extract_distinctive_trigrams(title_list)
 
     for prev_title in previous_titles:
         if not isinstance(prev_title, str) or not prev_title.strip():
@@ -1129,11 +1260,20 @@ def is_near_duplicate(
                 return prev_title
 
         if title_tokens:
-            prev_tokens = normalize_title_tokens(prev_title)
-            if prev_tokens:
-                union_size = len(title_tokens | prev_tokens)
-                if union_size > 0 and (len(title_tokens & prev_tokens) / union_size) >= threshold:
-                    return prev_title
+            prev_list = title_token_list(prev_title)
+            if not prev_list:
+                continue
+            prev_tokens = set(prev_list)
+
+            union_size = len(title_tokens | prev_tokens)
+            if union_size > 0 and (len(title_tokens & prev_tokens) / union_size) >= threshold:
+                return prev_title
+
+            if title_named and (title_named & _extract_named_tokens(prev_tokens)):
+                return prev_title
+
+            if title_trigrams and (title_trigrams & _extract_distinctive_trigrams(prev_list)):
+                return prev_title
 
     return None
 

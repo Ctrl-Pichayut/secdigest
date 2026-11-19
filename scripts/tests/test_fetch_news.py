@@ -2548,10 +2548,26 @@ class TestNearDuplicateDeduplication(unittest.TestCase):
         )
         self.assertEqual(matched, previous[0])
 
+    def test_title_token_list_preserves_order_and_drops_via(self):
+        tokens = fetch_news.title_token_list(
+            "GitLab CE/EE RCE via CI/CD Regex via Pipeline"
+        )
+        self.assertEqual(
+            tokens,
+            ["gitlab", "ce", "ee", "rce", "ci", "cd", "regex", "pipeline"],
+        )
+        self.assertEqual(
+            fetch_news.normalize_title_tokens(
+                "GitLab CE/EE RCE via CI/CD Regex via Pipeline"
+            ),
+            set(tokens),
+        )
+
     def test_threshold_edge_exact_and_below(self):
         # 3 shared tokens out of 5 union tokens => Jaccard = 0.6 exactly.
+        # Reordered so no consecutive word trigram is shared, isolating the Jaccard threshold.
         prev_exact = ["Alpha Beta Gamma Delta"]
-        cand_exact = "Alpha Beta Gamma Epsilon"
+        cand_exact = "Gamma Beta Alpha Epsilon"
         self.assertEqual(
             fetch_news.is_near_duplicate(cand_exact, prev_exact, threshold=0.6),
             prev_exact[0],
@@ -2562,7 +2578,7 @@ class TestNearDuplicateDeduplication(unittest.TestCase):
 
         # 4 shared tokens out of 7 union tokens => Jaccard = 4/7 (~0.5714) < 0.6.
         prev_below = ["Alpha Beta Gamma Delta Zeta"]
-        cand_below = "Alpha Beta Gamma Delta Eta Theta"
+        cand_below = "Delta Gamma Beta Alpha Eta Theta"
         self.assertIsNone(
             fetch_news.is_near_duplicate(cand_below, prev_below, threshold=0.6)
         )
@@ -2570,6 +2586,123 @@ class TestNearDuplicateDeduplication(unittest.TestCase):
             fetch_news.is_near_duplicate(cand_below, prev_below, threshold=0.57),
             prev_below[0],
         )
+
+    def test_real_production_duplicates_match(self):
+        # Shared distinctive trigram ("gemini", "4", "neon") despite low Jaccard (~0.24).
+        prev_gemini = (
+            "Google Launches Gemini 4 Neon: Flagship Model Optimized for Frontier Reasoning and Agents"
+        )
+        cand_gemini = (
+            "Google DeepMind Releases Gemini 4 Neon for Agentic Coding and Tool Workflows"
+        )
+        gemini_prev_tokens = fetch_news.normalize_title_tokens(prev_gemini)
+        gemini_cand_tokens = fetch_news.normalize_title_tokens(cand_gemini)
+        gemini_jaccard = len(gemini_prev_tokens & gemini_cand_tokens) / len(
+            gemini_prev_tokens | gemini_cand_tokens
+        )
+        self.assertLess(gemini_jaccard, 0.6)
+        self.assertEqual(
+            fetch_news.is_near_duplicate(cand_gemini, [prev_gemini]),
+            prev_gemini,
+        )
+        self.assertEqual(
+            fetch_news.is_near_duplicate(prev_gemini, [cand_gemini]),
+            cand_gemini,
+        )
+
+        # Shared named token ("java4shell") when only one title includes the CVE ID.
+        prev_java4shell = (
+            "Java4Shell: Critical RCE Flaw Uncovered in OpenJDK Base64 Decoding Pipeline"
+        )
+        cand_java4shell = (
+            "Java4Shell (CVE-2026-114938): Critical Out-of-Bounds Write in OpenJDK Base64 Decoder"
+        )
+        j4s_prev_tokens = fetch_news.normalize_title_tokens(prev_java4shell)
+        j4s_cand_tokens = fetch_news.normalize_title_tokens(cand_java4shell)
+        j4s_jaccard = len(j4s_prev_tokens & j4s_cand_tokens) / len(
+            j4s_prev_tokens | j4s_cand_tokens
+        )
+        self.assertLess(j4s_jaccard, 0.6)
+        self.assertEqual(
+            fetch_news.is_near_duplicate(cand_java4shell, [prev_java4shell]),
+            prev_java4shell,
+        )
+        self.assertEqual(
+            fetch_news.is_near_duplicate(prev_java4shell, [cand_java4shell]),
+            cand_java4shell,
+        )
+
+        # Poolside Laguna variant pair.
+        prev_laguna = "Free Model: Poolside Laguna S 2.1 - Advanced Coding Agent"
+        cand_laguna = "Free Laguna XS 2.1: Advanced Coding Agent Model by Poolside"
+        self.assertEqual(
+            fetch_news.is_near_duplicate(cand_laguna, [prev_laguna]),
+            prev_laguna,
+        )
+        self.assertEqual(
+            fetch_news.is_near_duplicate(prev_laguna, [cand_laguna]),
+            cand_laguna,
+        )
+
+    def test_production_false_positive_risks_do_not_match(self):
+        non_duplicate_pairs = [
+            (
+                "Adobe Commerce and Magento Unrestricted File Upload Remote Code Execution",
+                "GitLab CE/EE Remote Code Execution via CI/CD Regex Integer Overflow",
+            ),
+            (
+                "GlacierCTF 2026: High-Weight Jeopardy CTF by LosFuzzys",
+                "Crate-CTF 2026: High-Weight Jeopardy CTF by Swedish Defence Research",
+            ),
+            (
+                "Baidu Releases ERNIE-5.5-Flash-Preview with 1M Context Window for Free",
+                "Particle-1: Free Agentic Coding Model with 1M Context Window",
+            ),
+            (
+                "ProFTPD Arbitrary File Read/Write Vulnerability Exploited in the Wild",
+                "Cisco Secure Email Gateway Arbitrary File Write",
+            ),
+            (
+                "Critical PHP RCE Vulnerabilities via Memory Corruption and Stale Request State",
+                "Google Brotli Decoder Unchecked Return Value Memory Corruption",
+            ),
+            (
+                "Unauthenticated Remote Code Execution Disclosed in Nginx HTTP/2 Protocol Handling",
+                "Ruby2ßhell: Pre-Authentication Remote Code Execution in Default Ruby on Rails",
+            ),
+            (
+                "OpenBSD OpenSSH Authentication Bypass Vulnerability",
+                "Base64 Decoder Flaw in Example Base64 Library",
+            ),
+        ]
+        for first, second in non_duplicate_pairs:
+            with self.subTest(first=first, second=second):
+                self.assertIsNone(fetch_news.is_near_duplicate(second, [first]))
+                self.assertIsNone(fetch_news.is_near_duplicate(first, [second]))
+
+    def test_non_named_alphanumeric_tokens_do_not_trigger_match(self):
+        non_named_pairs = [
+            (
+                "Base64 Decoder Flaw in Example Base64 Library",
+                "Nginx Base64 Header Parsing Regression",
+            ),
+            (
+                "Linux x86 Bootloader Regression",
+                "QEMU x86 Emulator JIT Optimization",
+            ),
+            (
+                "Researcher Publishes A4B Benchmark Suite",
+                "Compiler A4B Target Instruction Scheduling",
+            ),
+            (
+                "Envoy HTTP2 Stream Multiplexing Guide",
+                "HAProxy HTTP2 Frame Priority Tuning",
+            ),
+        ]
+        for first, second in non_named_pairs:
+            with self.subTest(first=first, second=second):
+                self.assertIsNone(fetch_news.is_near_duplicate(second, [first]))
+                self.assertIsNone(fetch_news.is_near_duplicate(first, [second]))
 
     def test_within_run_duplicate_and_breaking_repeat_dropped_with_info_logs(self):
         recent_titles = ["Anthropic Global API Outage Disrupts Claude"]
