@@ -211,82 +211,155 @@ async function swipeCard(page, locator, direction) {
   }
 }
 
-async function checkNoHorizontalOverflowAtViewport(page, pageLabel, viewport) {
+async function checkNoHorizontalOverflowAtViewport(page, pageLabel, viewport, options = {}) {
+  const { checkNewsCardActionBar = false } = options;
   await page.setViewportSize(viewport);
-  const report = await page.evaluate(async (maxRightOverflowPx) => {
-    if (document.fonts && document.fonts.ready) {
-      await document.fonts.ready;
-    }
-    await new Promise((resolve) =>
-      requestAnimationFrame(() => requestAnimationFrame(resolve))
-    );
-
-    const viewportWidth = window.innerWidth;
-    const docScrollWidth = document.documentElement.scrollWidth;
-    const bodyScrollWidth = document.body ? document.body.scrollWidth : 0;
-    const issues = [];
-
-    if (docScrollWidth > viewportWidth + maxRightOverflowPx) {
-      issues.push(
-        `documentElement.scrollWidth (${docScrollWidth}) exceeds viewport (${viewportWidth})`
-      );
-    }
-    if (bodyScrollWidth > viewportWidth + maxRightOverflowPx) {
-      issues.push(
-        `body.scrollWidth (${bodyScrollWidth}) exceeds viewport (${viewportWidth})`
-      );
-    }
-
-    const skippedTags = new Set([
-      'HTML',
-      'HEAD',
-      'SCRIPT',
-      'STYLE',
-      'META',
-      'LINK',
-      'TITLE',
-      'NOSCRIPT',
-    ]);
-
-    function isClippedByAncestor(el) {
-      let parent = el.parentElement;
-      while (parent && parent !== document.body && parent !== document.documentElement) {
-        const ox = window.getComputedStyle(parent).overflowX;
-        if (ox === 'hidden' || ox === 'clip' || ox === 'auto' || ox === 'scroll') {
-          return true;
-        }
-        parent = parent.parentElement;
+  const report = await page.evaluate(
+    async ({ maxRightOverflowPx, shouldCheckActionBar }) => {
+      if (document.fonts && document.fonts.ready) {
+        await document.fonts.ready;
       }
-      return false;
-    }
+      await new Promise((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(resolve))
+      );
 
-    for (const el of document.querySelectorAll('*')) {
-      if (skippedTags.has(el.tagName)) continue;
-      if (el instanceof SVGElement && el.tagName.toLowerCase() !== 'svg') continue;
-      const style = window.getComputedStyle(el);
-      if (style.display === 'none' || style.visibility === 'hidden') continue;
-      const rect = el.getBoundingClientRect();
-      if (rect.width === 0 || rect.height === 0) continue;
-      if (isClippedByAncestor(el)) continue;
+      const viewportWidth = window.innerWidth;
+      const docScrollWidth = document.documentElement.scrollWidth;
+      const bodyScrollWidth = document.body ? document.body.scrollWidth : 0;
+      const issues = [];
 
-      if (
-        rect.width > viewportWidth + maxRightOverflowPx ||
-        rect.right > viewportWidth + maxRightOverflowPx ||
-        rect.left < -maxRightOverflowPx
-      ) {
-        const tag = el.tagName.toLowerCase();
-        const idPart = el.id ? `#${el.id}` : '';
-        const testId = el.getAttribute('data-testid');
-        const testIdPart = testId ? `[data-testid="${testId}"]` : '';
+      if (docScrollWidth > viewportWidth + maxRightOverflowPx) {
         issues.push(
-          `${tag}${idPart}${testIdPart} (left=${Number(rect.left.toFixed(1))}, right=${Number(rect.right.toFixed(1))}, width=${Number(rect.width.toFixed(1))}, viewport=${viewportWidth})`
+          `documentElement.scrollWidth (${docScrollWidth}) exceeds viewport (${viewportWidth})`
         );
-        if (issues.length >= 5) break;
       }
-    }
+      if (bodyScrollWidth > viewportWidth + maxRightOverflowPx) {
+        issues.push(
+          `body.scrollWidth (${bodyScrollWidth}) exceeds viewport (${viewportWidth})`
+        );
+      }
 
-    return { issues };
-  }, MAX_RIGHT_OVERFLOW_PX);
+      const skippedTags = new Set([
+        'HTML',
+        'HEAD',
+        'SCRIPT',
+        'STYLE',
+        'META',
+        'LINK',
+        'TITLE',
+        'NOSCRIPT',
+      ]);
+
+      function isClippedByAncestor(el) {
+        let parent = el.parentElement;
+        while (parent && parent !== document.body && parent !== document.documentElement) {
+          const ox = window.getComputedStyle(parent).overflowX;
+          if (ox === 'hidden' || ox === 'clip' || ox === 'auto' || ox === 'scroll') {
+            return true;
+          }
+          parent = parent.parentElement;
+        }
+        return false;
+      }
+
+      for (const el of document.querySelectorAll('*')) {
+        if (skippedTags.has(el.tagName)) continue;
+        if (el instanceof SVGElement && el.tagName.toLowerCase() !== 'svg') continue;
+        const style = window.getComputedStyle(el);
+        if (style.display === 'none' || style.visibility === 'hidden') continue;
+        const rect = el.getBoundingClientRect();
+        if (rect.width === 0 || rect.height === 0) continue;
+        if (isClippedByAncestor(el)) continue;
+
+        if (
+          rect.width > viewportWidth + maxRightOverflowPx ||
+          rect.right > viewportWidth + maxRightOverflowPx ||
+          rect.left < -maxRightOverflowPx
+        ) {
+          const tag = el.tagName.toLowerCase();
+          const idPart = el.id ? `#${el.id}` : '';
+          const testId = el.getAttribute('data-testid');
+          const testIdPart = testId ? `[data-testid="${testId}"]` : '';
+          issues.push(
+            `${tag}${idPart}${testIdPart} (left=${Number(rect.left.toFixed(1))}, right=${Number(rect.right.toFixed(1))}, width=${Number(rect.width.toFixed(1))}, viewport=${viewportWidth})`
+          );
+          if (issues.length >= 5) break;
+        }
+      }
+
+      if (shouldCheckActionBar) {
+        const cards = Array.from(document.querySelectorAll('[data-testid^="news-card-"]'));
+        const firstVisibleCard = cards.find((card) => {
+          const style = window.getComputedStyle(card);
+          if (style.display === 'none' || style.visibility === 'hidden') return false;
+          const rect = card.getBoundingClientRect();
+          return rect.width > 0 && rect.height > 0;
+        });
+
+        if (!firstVisibleCard) {
+          issues.push('No visible news card found for action bar single-line check');
+        } else {
+          const shareButton = firstVisibleCard.querySelector('[data-testid="share-button"]');
+          const actionBar = shareButton ? shareButton.parentElement : null;
+          if (!actionBar) {
+            issues.push('Could not find action bar via share-button parentElement');
+          } else {
+            const children = Array.from(actionBar.children);
+            if (children.length < 4) {
+              issues.push(
+                `Expected at least 4 direct children in action bar, found ${children.length}`
+              );
+            } else {
+              const barRect = actionBar.getBoundingClientRect();
+              const childRects = children.map((child) => {
+                const rect = child.getBoundingClientRect();
+                const tag = child.tagName.toLowerCase();
+                const testId = child.getAttribute('data-testid');
+                return {
+                  label: testId ? `${tag}[data-testid="${testId}"]` : tag,
+                  top: rect.top,
+                  left: rect.left,
+                  right: rect.right,
+                };
+              });
+
+              const minTop = Math.min(...childRects.map((c) => c.top));
+              const maxTop = Math.max(...childRects.map((c) => c.top));
+              if (maxTop - minTop > 2) {
+                const detail = childRects
+                  .map((c) => `${c.label}:top=${Number(c.top.toFixed(1))}`)
+                  .join(', ');
+                issues.push(
+                  `Action bar wrapped across multiple lines (top spread ${Number(
+                    (maxTop - minTop).toFixed(1)
+                  )}px > 2px: ${detail})`
+                );
+              }
+
+              const barOverflowTolerance = Math.max(maxRightOverflowPx, 1);
+              const overflowingChild = childRects.find(
+                (c) =>
+                  c.right > barRect.right + barOverflowTolerance ||
+                  c.left < barRect.left - barOverflowTolerance
+              );
+              if (overflowingChild) {
+                issues.push(
+                  `Action bar child exceeds bar bounds (${overflowingChild.label}: left=${Number(
+                    overflowingChild.left.toFixed(1)
+                  )}, right=${Number(overflowingChild.right.toFixed(1))}, bar=[${Number(
+                    barRect.left.toFixed(1)
+                  )}, ${Number(barRect.right.toFixed(1))}])`
+                );
+              }
+            }
+          }
+        }
+      }
+
+      return { issues };
+    },
+    { maxRightOverflowPx: MAX_RIGHT_OVERFLOW_PX, shouldCheckActionBar: checkNewsCardActionBar }
+  );
 
   if (report.issues.length > 0) {
     throw new Error(
@@ -295,13 +368,18 @@ async function checkNoHorizontalOverflowAtViewport(page, pageLabel, viewport) {
   }
 }
 
-async function checkNoHorizontalOverflow(page, pageLabel, viewports = OVERFLOW_VIEWPORTS) {
+async function checkNoHorizontalOverflow(
+  page,
+  pageLabel,
+  viewports = OVERFLOW_VIEWPORTS,
+  options = {}
+) {
   const originalViewport = page.viewportSize() || VIEWPORT;
   const errors = [];
   try {
     for (const viewport of viewports) {
       try {
-        await checkNoHorizontalOverflowAtViewport(page, pageLabel, viewport);
+        await checkNoHorizontalOverflowAtViewport(page, pageLabel, viewport, options);
       } catch (err) {
         errors.push(err instanceof Error ? err.message : String(err));
       }
@@ -522,9 +600,11 @@ async function main() {
       }
     });
 
-    // Check feed horizontal layout before mutating card positions.
+    // Check feed horizontal layout and single-line action bar before mutating card positions.
     try {
-      await checkNoHorizontalOverflow(page, 'Feed (/)');
+      await checkNoHorizontalOverflow(page, 'Feed (/)', OVERFLOW_VIEWPORTS, {
+        checkNewsCardActionBar: true,
+      });
       checkedFeedOverflow = true;
     } catch (err) {
       checkedFeedOverflow = true;

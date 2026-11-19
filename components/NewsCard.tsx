@@ -701,18 +701,22 @@ export default function NewsCard({
 
       {/* Interactive Action Bar (Clean non-white pills) */}
       <div
-        className={`flex flex-wrap items-center justify-between gap-1.5 sm:gap-2 pt-3 border-t ${
+        className={`flex items-center justify-between gap-1.5 sm:gap-2 pt-3 border-t ${
           isDusk ? 'border-[#433D58]/60' : 'border-[#D2C9B8]'
         }`}
       >
-        {/* Bookmark Button */}
+        {/* Bookmark Button (Icon-only) */}
         <motion.button
           type="button"
           data-testid={`btn-bookmark-${item.id}`}
-          onClick={() => onToggleBookmark(item.id, item.is_bookmarked)}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleBookmark(item.id, item.is_bookmarked);
+          }}
           whileTap={{ scale: 0.92 }}
           whileHover={{ y: -1 }}
-          className={`inline-flex items-center justify-center gap-1.5 min-h-[40px] min-w-[40px] px-2.5 sm:px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all touch-manipulation cursor-pointer ${focusRingClass} ${
+          className={`inline-flex items-center justify-center shrink-0 min-h-[44px] min-w-[44px] p-2 rounded-xl text-xs font-semibold transition-all touch-manipulation cursor-pointer ${focusRingClass} ${
             item.is_bookmarked
               ? isDusk
                 ? 'bg-amber-950/70 text-amber-200 border border-amber-700/60 font-bold shadow-xs'
@@ -721,12 +725,16 @@ export default function NewsCard({
               ? 'bg-[#2A263A] text-[#E2DCF0] border border-[#433D58] hover:bg-[#353048] shadow-2xs'
               : 'bg-[#EFECE6] hover:bg-[#E5DFD3] text-[#4A443E] hover:text-[#2A2623] border border-[#D2C9B8] shadow-2xs'
           }`}
-          aria-label={item.is_bookmarked ? 'Remove bookmark' : 'Bookmark item'}
+          aria-label={
+            item.is_bookmarked
+              ? `Remove ${item.title} from saved`
+              : `Save ${item.title}`
+          }
           aria-pressed={item.is_bookmarked}
         >
           <Bookmark
             aria-hidden="true"
-            className={`w-3.5 h-3.5 shrink-0 ${
+            className={`w-4 h-4 shrink-0 ${
               item.is_bookmarked
                 ? isDusk
                   ? 'fill-amber-300 text-amber-300'
@@ -734,17 +742,60 @@ export default function NewsCard({
                 : ''
             }`}
           />
-          <span>{item.is_bookmarked ? 'Saved' : 'Save'}</span>
+        </motion.button>
+
+        {/* Share Button (Icon-only) */}
+        <motion.button
+          type="button"
+          data-testid="share-button"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={handleShare}
+          whileTap={{ scale: 0.92 }}
+          whileHover={{ y: -1 }}
+          className={`inline-flex items-center justify-center shrink-0 gap-1.5 min-h-[44px] min-w-[44px] px-2.5 sm:px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all touch-manipulation cursor-pointer ${focusRingClass} ${
+            shareStatus === 'copied'
+              ? isDusk
+                ? 'bg-emerald-950/70 text-emerald-300 border border-emerald-700/60 font-bold shadow-xs'
+                : 'bg-emerald-200/90 text-emerald-950 border border-emerald-300 font-bold shadow-xs'
+              : shareStatus === 'failed'
+              ? isDusk
+                ? 'bg-rose-950/70 text-rose-200 border border-rose-700/60 font-bold shadow-xs'
+                : 'bg-rose-200/90 text-rose-950 border border-rose-300 font-bold shadow-xs'
+              : isDusk
+              ? 'bg-[#2A263A] text-[#E2DCF0] border border-[#433D58] hover:bg-[#353048] shadow-2xs'
+              : 'bg-[#EFECE6] hover:bg-[#E5DFD3] text-[#4A443E] hover:text-[#2A2623] border border-[#D2C9B8] shadow-2xs'
+          }`}
+          aria-label={`Share ${item.title}`}
+        >
+          {shareStatus === 'copied' ? (
+            <CheckIcon className="w-4 h-4 shrink-0" />
+          ) : (
+            <ShareIcon className="w-4 h-4 shrink-0" />
+          )}
+          <span
+            aria-live="polite"
+            className={shareStatus === 'idle' ? 'sr-only' : undefined}
+          >
+            {shareStatus === 'copied'
+              ? 'Link copied'
+              : shareStatus === 'failed'
+              ? 'Copy failed'
+              : ''}
+          </span>
         </motion.button>
 
         {/* Mark Read Check-in Button */}
         <motion.button
           type="button"
           data-testid={`btn-read-${item.id}`}
-          onClick={() => onToggleRead(item.id, item.is_read)}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleRead(item.id, item.is_read);
+          }}
           whileTap={{ scale: 0.92 }}
           whileHover={{ y: -1 }}
-          className={`inline-flex items-center justify-center gap-1.5 min-h-[40px] min-w-[40px] px-2.5 sm:px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all touch-manipulation cursor-pointer ${focusRingClass} ${
+          className={`inline-flex items-center justify-center shrink-0 gap-1 sm:gap-1.5 min-h-[44px] min-w-[44px] px-2 sm:px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all touch-manipulation cursor-pointer ${focusRingClass} ${
             item.is_read
               ? isDusk
                 ? 'bg-emerald-950/70 text-emerald-300 border border-emerald-700/60 font-bold shadow-xs'
@@ -769,64 +820,27 @@ export default function NewsCard({
           <span>{item.is_read ? 'Read' : 'Mark Read'}</span>
         </motion.button>
 
-        {/* Share Button */}
-        <motion.button
-          type="button"
-          data-testid="share-button"
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={handleShare}
-          whileTap={{ scale: 0.92 }}
-          whileHover={{ y: -1 }}
-          className={`inline-flex items-center justify-center gap-1.5 min-h-[44px] min-w-[44px] px-2.5 sm:px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all touch-manipulation cursor-pointer ${focusRingClass} ${
-            shareStatus === 'copied'
-              ? isDusk
-                ? 'bg-emerald-950/70 text-emerald-300 border border-emerald-700/60 font-bold shadow-xs'
-                : 'bg-emerald-200/90 text-emerald-950 border border-emerald-300 font-bold shadow-xs'
-              : shareStatus === 'failed'
-              ? isDusk
-                ? 'bg-rose-950/70 text-rose-200 border border-rose-700/60 font-bold shadow-xs'
-                : 'bg-rose-200/90 text-rose-950 border border-rose-300 font-bold shadow-xs'
-              : isDusk
-              ? 'bg-[#2A263A] text-[#E2DCF0] border border-[#433D58] hover:bg-[#353048] shadow-2xs'
-              : 'bg-[#EFECE6] hover:bg-[#E5DFD3] text-[#4A443E] hover:text-[#2A2623] border border-[#D2C9B8] shadow-2xs'
-          }`}
-          aria-label={`Share ${item.title}`}
-        >
-          {shareStatus === 'copied' ? (
-            <CheckIcon className="w-3.5 h-3.5 shrink-0" />
-          ) : (
-            <ShareIcon className="w-3.5 h-3.5 shrink-0" />
-          )}
-          <span
-            aria-live="polite"
-            className={shareStatus === 'idle' ? 'sr-only' : undefined}
-          >
-            {shareStatus === 'copied'
-              ? 'Link copied'
-              : shareStatus === 'failed'
-              ? 'Copy failed'
-              : ''}
-          </span>
-        </motion.button>
-
-        {/* Read Post Link */}
+        {/* Open Source Link */}
         <motion.a
           href={item.url}
           target="_blank"
           rel="noopener noreferrer"
           data-testid={`btn-source-${item.id}`}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
           whileTap={{ scale: 0.92 }}
           whileHover={{ y: -1 }}
-          className={`inline-flex items-center justify-center gap-1.5 min-h-[40px] min-w-[40px] px-2.5 sm:px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all touch-manipulation border shadow-2xs ${focusRingClass} ${
+          className={`flex-1 inline-flex items-center justify-center gap-1 sm:gap-1.5 min-h-[44px] min-w-[44px] px-2 sm:px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all touch-manipulation border shadow-2xs ${focusRingClass} ${
             isDusk
-              ? 'bg-[#2A263A] text-[#E2DCF0] border border-[#433D58] hover:bg-[#353048]'
-              : 'bg-[#EFECE6] hover:bg-[#E5DFD3] text-[#2A2623] border border-[#D2C9B8]'
+              ? 'bg-[#2A263A] text-[#E2DCF0] border-[#433D58] hover:bg-[#353048]'
+              : 'bg-[#EFECE6] hover:bg-[#E5DFD3] text-[#2A2623] border-[#D2C9B8]'
           }`}
+          aria-label={`Open ${item.title} in a new tab`}
         >
-          <span>Read Post</span>
+          <span>Open</span>
           <ExternalLink
             aria-hidden="true"
-            className={`w-3 h-3 shrink-0 ${isDusk ? 'text-[#D4CDE4]' : 'text-[#6A635C]'}`}
+            className={`w-3.5 h-3.5 shrink-0 ${isDusk ? 'text-[#D4CDE4]' : 'text-[#6A635C]'}`}
           />
         </motion.a>
       </div>
