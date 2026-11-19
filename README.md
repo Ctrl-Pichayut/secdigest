@@ -1,161 +1,120 @@
-# SecDigest: Personal CyberSec & Tech Intelligence PWA
+# SecDigest
 
-A zero-cost, single-user daily intelligence digest web application tailored for Computer Science students and developers specializing in **Cybersecurity**, **Cloud Security**, **CTF Competitions**, and **AI / Developer Tools**.
+Single-user daily cybersecurity and tech digest Progressive Web App (PWA). Built with Next.js 15 (App Router, React 19, TypeScript, Tailwind CSS), Supabase PostgreSQL, and Python ingestion scripts.
 
-Designed with a strict **Mobile-First** dark mode interface optimized for one-handed commute reading on smartphones.
+## Overview
 
----
+- **Feed (`/`)**: Daily digest cards with category filters (`All`, `Free AI & Credits`, `CTF & Labs`, `Hot Bugs (KEV)`, `Dev & Cloud`, `Saved`), per-card English/Thai summary toggle with technical term glossary, bookmarks, read tracking, Paper/Dusk reading themes, and native PWA manifest (`app/manifest.ts`).
+- **Practice (`/practice`)**: Spaced-repetition coding practice (see [Practice](#practice)).
+- **Solved CTF**: interactive write-ups and labs (`/solved`).
 
-## Architecture Overview
+## Architecture
 
-```
-                   +-------------------------------+
-                   |     Automated Ingestion       |
-                   |   (GitHub Actions @ 06:30)    |
-                   +---------------+---------------+
-                                   |
-         +-------------------------+-------------------------+
-         |                         |                         |
-         v                         v                         v
-+-----------------+       +-----------------+       +-----------------+
-|  CISA KEV (CVE) |       | OpenRouter Free |       | Hacker News API |
-|   Last 7 Days   |       |   Models (:free)|       |  Points > 50    |
-+--------+--------+       +--------+--------+       +--------+--------+
-         |                         |                         |
-         +-------------------------+-------------------------+
-                                   |
-                                   v
-                   +-------------------------------+
-                   |       CTFtime Events          |
-                   |      (Mondays & Fridays)      |
-                   +---------------+---------------+
-                                   |
-                                   v
-                   +-------------------------------+
-                   |     Supabase Deduplication    |
-                   |   (Filter seen source_ids)    |
-                   +---------------+---------------+
-                                   |
-                                   v
-                   +-------------------------------+
-                   |        Gemini Flash           |
-                   |   Curate top <= 5 items/day   |
-                   |  Generate TLDR & Action Value |
-                   +---------------+---------------+
-                                   |
-                                   v
-                   +-------------------------------+
-                   |     Supabase PostgreSQL       |
-                   |     (public.news_items)       |
-                   +---------------+---------------+
-                                   |
-                                   v
-                   +-------------------------------+
-                   |   Next.js 15 App Router PWA   |
-                   |  (Vercel / Mobile Standalone) |
-                   +-------------------------------+
+```text
+GitHub Actions daily cron (20:30 UTC / 03:30 UTC+7, .github/workflows/daily_digest.yml)
+  -> scripts/fetch_news.py
+     -> fetch 5 sources + deduplicate against public.seen_sources & public.news_items
+     -> Gemini structured-output fallback chain (google-genai):
+        gemini-3.8-flash -> gemini-3.7-flash -> gemini-3.6-flash -> gemini-2.5-flash
+     -> upsert into Supabase PostgreSQL (public.news_items, then public.seen_sources)
+  -> scripts/generate_practice_cards.py (runs after news; continue-on-error)
+     -> refill public.practice_cards only when an active language runs low
+  -> Next.js App Router PWA on Vercel (reads via @supabase/supabase-js)
 ```
 
----
+Gemini 3.x models use `thinking_level="low"`; the `gemini-2.5-flash` fallback omits `thinking_level` and pins `api_version="v1beta"`.
 
-## Features
+## Digest Sources and Breaking-News Rule
 
-- **High-Signal Data Sources**:
-  - **CISA KEV Catalog**: Actively exploited vulnerabilities added within the last 7 days (`CVE_SECURITY`).
-  - **OpenRouter API**: Newly added free developer models ending in `:free` (`AI_FREE`).
-  - **Hacker News Algolia**: Stories with >50 points in the last 24h matching security, cloud, aws, cli, ide, or llm (`DEV_CLOUD`).
-  - **CTFtime**: Upcoming CTF competitions with live countdowns (`CTF_COMPETITION`).
-- **AI Intelligence Curation**:
-  - Automatically filters noise, marketing hype, and trivial patches.
-  - Generates sharp, 2-3 line technical `TLDR`s and 1-2 line `WHY IT MATTERS` takeaways (actionable portfolio ideas, free credits, or interview talking points).
-- **Mobile-First Dark Interface**:
-  - Built with Next.js App Router, TypeScript, and Tailwind CSS.
-  - Sticky horizontal pill category navigation.
-  - CTF start date countdown badges (`Starts in Xd`, `Live Now`).
-  - One-tap thumb toggles for **Saved** (bookmarks) and **Mark Read** (dimming read cards) with optimistic UI updates.
-- **Progressive Web App (PWA)**:
-  - Native Next.js `app/manifest.ts` configuration.
-  - Full-screen standalone mode without browser address bars when added to home screen on iOS and Android.
-- **Daily Coding Practice** (Python first, then C, JavaScript, Java):
-  - Spaced repetition (FSRS) with tap-only exercises: predict the output, spot the bug, reorder the lines, and "which language?".
-  - 2 / 5 / 15-minute sessions and a weekly goal instead of a daily streak; progress syncs to Supabase and works offline.
-  - New cards are generated by Gemini **only when a language runs low** (under ~14 days of unseen cards at your recent pace), and every card is verified by actually running its code before it is stored.
-- **Zero-Cost Automation**:
-  - GitHub Actions cron job triggers daily at 23:30 UTC (06:30 AM Bangkok time UTC+7).
+`scripts/fetch_news.py` collects candidates from five sources:
 
----
+1. **CISA KEV**: Known Exploited Vulnerabilities added in the last 7 days (`CVE_SECURITY`).
+2. **OpenRouter Free Models**: Models whose ID ends with `:free` (`AI_FREE`).
+3. **Hacker News**: Top 30 stories by points from the Algolia API in the last 36 hours with more than 50 points (`CVE_SECURITY` or `DEV_CLOUD`).
+4. **Official Status Pages**: Major/critical incidents from Anthropic, OpenAI, GitHub, and Cloudflare, plus high-severity incidents from Google Cloud, created in the last 36 hours (`DEV_CLOUD`).
+5. **CTFtime**: Upcoming CTF events. Runs on Mondays and Fridays (UTC), or any day with `--force-ctf` (`CTF_COMPETITION`).
 
-## Tech Stack
+**Breaking-news rule**: Each run keeps up to 5 normal (`is_breaking=false`) items plus every breaking (`is_breaking=true`) item, capped at 8 items total (with breaking items ordered first, and at most 2 non-breaking `CVE_SECURITY` items per run). Breaking items are reserved for major global outages, actively exploited mass-impact vulnerabilities, or flagship launches from major AI vendors. In the feed, unread breaking items appear in a `Breaking` group at the top.
 
-- **Frontend**: Next.js 15 (App Router), React 19, TypeScript, Tailwind CSS, Lucide Icons.
-- **Database**: Supabase PostgreSQL with Row-Level Security (RLS) policies.
-- **Backend / Pipeline**: Python 3.11+, Google GenAI SDK (`google-genai`), Pydantic v2, Supabase Python client.
-- **Automation**: GitHub Actions (`daily_digest.yml`).
+`public.seen_sources` is updated only after Gemini curation and the Supabase upsert succeed, so failed runs retry the same candidates on the next run.
 
----
+## Practice
 
-## Getting Started
+- **Active languages**: Python only, configured by `ACTIVE_LANGS` in `lib/practice/types.ts` (frontend) and `ACTIVE` in `scripts/generate_practice_cards.py` (refill pipeline). Bundled card banks for C, JavaScript, and Java also exist in `lib/practice/cards/` and can be re-enabled by adding them to both lists.
+- **Scheduling (FSRS)**: Uses `ts-fsrs` (target retention `0.9`, max interval `365` days) with 2 / 5 / 15-minute sessions and a weekly session goal. Progress is stored local-first in `localStorage` and synced to `public.practice_reviews` and `public.practice_sessions`.
+- **Starter bank and refill**: Combines bundled cards (`lib/practice/cards/*.json`) with generated cards from `public.practice_cards`. `scripts/generate_practice_cards.py` requests a new Gemini batch only when an active language has been practiced in the last 14 days and its unseen count drops below `max(FLOOR[lang], ceil(pace * 14))` (floor is 10 for Python), or when forced via `--force-lang` / the workflow `practice_refill` input (`PRACTICE_FORCE_LANG`).
+- **Verifier**: `scripts/verify_practice_cards.py` validates card structure and executes code snippets in a temp directory with a scrubbed environment, timeout, and denylist (plus ASan/UBSan for C) to confirm deterministic output, a single valid order for `order` cards, and a working fix for `bug` cards. Generated cards that fail any check are discarded before storage.
 
-### 1. Database Setup (Supabase)
-Run the SQL script in [`supabase_schema.sql`](./supabase_schema.sql) in your **Supabase Dashboard > SQL Editor** to create `public.news_items`, enable Row-Level Security, and grant explicit API privileges.
+## Environment Variables
 
-For the Practice tab, also run [`supabase_phase9_practice.sql`](./supabase_phase9_practice.sql) (review history and sessions) and [`supabase_phase10_practice_cards.sql`](./supabase_phase10_practice_cards.sql) (generated cards).
+Variable names from `.env.example`:
 
-### 2. Environment Variables
-Copy `.env.example` to `.env`:
-```bash
-cp .env.example .env
-```
-Fill in your credentials:
-```env
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
-NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
-GEMINI_API_KEY=your-gemini-api-key
-```
+- `SUPABASE_URL` (Python scripts, GitHub Actions secret)
+- `SUPABASE_SERVICE_ROLE_KEY` (Python scripts, GitHub Actions secret)
+- `GEMINI_API_KEY` (Python scripts, GitHub Actions secret)
+- `NEXT_PUBLIC_SUPABASE_URL` (Next.js frontend, Vercel)
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY` (Next.js frontend, Vercel)
 
-### 3. Run Ingestion Pipeline (Python)
+Copy `.env.example` to `.env` for local development and fill in your values.
+
+## Database Migrations (Supabase)
+
+There is no automated migration runner. Paste and run the SQL files manually in **Supabase Dashboard -> SQL Editor** in this order:
+
+1. `supabase_schema.sql` — creates `public.news_items` (including Thai columns) and `public.seen_sources`, indexes, RLS policies, and explicit Data API `GRANT`s.
+2. `supabase_phase9_practice.sql` — creates `public.practice_reviews` and `public.practice_sessions`, indexes, RLS policies, and `GRANT`s.
+3. `supabase_phase10_practice_cards.sql` — creates `public.practice_cards` for verified generated cards, RLS policy, and `GRANT`s.
+4. `supabase_phase11_breaking.sql` — adds the `is_breaking` column to `public.news_items`.
+
+## Local Commands
+
+### Python setup
+
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r scripts/requirements.txt
-
-# Run ingestion manually (forces CTF fetch on any day of the week)
-python scripts/fetch_news.py --force-ctf
-
-# Practice cards: refill languages running low (add --force-lang python to generate a batch now)
-python scripts/generate_practice_cards.py --dry-run
-
-# Re-check every bundled practice card by running it (needs python3, node, gcc and java)
-python scripts/verify_practice_cards.py
 ```
 
-In GitHub Actions, **Run workflow** has a "Practice cards" option to force one batch for a chosen language.
+### Dry runs
 
-### 4. Run Frontend (Next.js)
+```bash
+# Fetch news candidates without calling Gemini or writing to Supabase
+python scripts/fetch_news.py --dry-run
+python scripts/fetch_news.py --dry-run --force-ctf
+
+# Plan practice refills without calling Gemini or writing (add --offline to skip Supabase)
+python scripts/generate_practice_cards.py --dry-run
+python scripts/generate_practice_cards.py --offline --force-lang python
+```
+
+### Unit tests
+
+```bash
+python -m unittest discover -s scripts/tests -v
+```
+
+### Practice card verifier
+
+```bash
+# Runs bundled cards (requires python3, node, gcc, and java on PATH; missing toolchains are skipped unless --strict)
+python scripts/verify_practice_cards.py
+python scripts/verify_practice_cards.py --lang python --strict
+```
+
+### Frontend (Next.js)
+
 ```bash
 npm install
 npm run dev
 ```
-Open [http://localhost:3000](http://localhost:3000) on your mobile browser or emulator.
 
----
+`npm run build` requires `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` to be set in the environment (or `.env`), because `lib/supabaseClient.ts` initializes the Supabase client at module load:
 
-## Deployment
-
-### Automated Ingestion (GitHub Actions)
-Add the following secrets to your GitHub repository (**Settings > Secrets and variables > Actions > Repository secrets**):
-- `SUPABASE_URL`
-- `SUPABASE_SERVICE_ROLE_KEY`
-- `GEMINI_API_KEY`
-
-### Frontend Hosting (Vercel)
-Deploy the repository directly on [Vercel](https://vercel.com) and configure:
-- `NEXT_PUBLIC_SUPABASE_URL`
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-
----
+```bash
+NEXT_PUBLIC_SUPABASE_URL=... NEXT_PUBLIC_SUPABASE_ANON_KEY=... npm run build
+```
 
 ## License
+
 MIT

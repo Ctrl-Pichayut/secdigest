@@ -10,6 +10,7 @@ import { usePractice, type SyncStatus } from '@/lib/practice/store';
 import { presetIdFor, usePracticeSettings, WEIGHT_PRESETS } from '@/lib/practice/settings';
 import { ACTIVE_LANGS, LANG_META, type SessionMode } from '@/lib/practice/types';
 import PracticeSession from '@/components/practice/PracticeSession';
+import MissedCardsPanel from '@/components/practice/MissedCardsPanel';
 import { GoalBar, LangChip, palette } from '@/components/practice/ui';
 import { CheckIcon, TargetIcon } from '@/components/icons';
 
@@ -64,7 +65,7 @@ export default function PracticePage() {
   const stats = useMemo(() => computeStats(cards, reviews, sessions), [cards, reviews, sessions]);
 
   const start = useCallback(
-    (minutes: number, sessionMode: SessionMode) => {
+    (minutes: number, sessionMode: SessionMode, onlyIds?: string[]) => {
       const size = SESSION_SIZES.find((s) => s.minutes === minutes) ?? SESSION_SIZES[1];
       const items = buildSession({
         cards,
@@ -73,6 +74,7 @@ export default function PracticePage() {
         cardCount: size.cards,
         newLimit: settings.newPerSession,
         weights: settings.weights,
+        onlyIds,
       });
       setSession({ items, minutes: size.minutes, mode: sessionMode, key: Date.now() });
     },
@@ -246,6 +248,15 @@ export default function PracticePage() {
               );
             })}
           </section>
+
+          {/* Cards to revisit */}
+          <MissedCardsPanel
+            cards={cards}
+            reviews={reviews}
+            ready={ready}
+            isDusk={isDusk}
+            onPractice={(cardIds) => start(size.minutes, defaultMode, cardIds)}
+          />
 
           {/* Settings */}
           <section className={`rounded-2xl border overflow-hidden ${p.panel}`}>

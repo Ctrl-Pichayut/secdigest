@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import Providers from '@/components/Providers';
 import BottomNav from '@/components/BottomNav';
+import RegisterServiceWorker from '@/components/RegisterServiceWorker';
 
 // Runs before first paint: applies the saved reading theme to the body so dusk
 // users never see a paper-colored flash on load. Kept tiny and dependency-free.
@@ -48,6 +49,7 @@ export default function RootLayout({
           {children}
           <BottomNav />
         </Providers>
+        <RegisterServiceWorker />
       </body>
     </html>
   );

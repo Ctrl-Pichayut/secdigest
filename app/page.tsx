@@ -146,9 +146,20 @@ export default function HomePage() {
   // Populate time-dependent greeting, date, day headers, and freshness only after
   // mount so prerendered HTML matches the initial client render (avoids hydration #418).
   const [now, setNow] = useState<Date | null>(null);
+  const [isOffline, setIsOffline] = useState<boolean>(false);
 
   useEffect(() => {
     setNow(new Date());
+    const syncOnlineStatus = () => {
+      setIsOffline(navigator.onLine === false);
+    };
+    syncOnlineStatus();
+    window.addEventListener('online', syncOnlineStatus);
+    window.addEventListener('offline', syncOnlineStatus);
+    return () => {
+      window.removeEventListener('online', syncOnlineStatus);
+      window.removeEventListener('offline', syncOnlineStatus);
+    };
   }, []);
 
   const clientTime = useMemo(
@@ -455,6 +466,16 @@ export default function HomePage() {
                 }`}
               >
                 {freshness.text}
+              </p>
+            )}
+            {isOffline && (
+              <p
+                data-testid="offline-notice"
+                className={`text-[11px] leading-4 font-medium ${
+                  isDusk ? 'text-[#B3ACC5]' : 'text-[#6A635C]'
+                }`}
+              >
+                Offline - showing saved digest
               </p>
             )}
           </div>

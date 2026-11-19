@@ -121,6 +121,10 @@ function pickNew(pool: PracticeCard[], reviews: Record<string, ReviewRow>, slots
  * `newLimit` new cards in the remaining slots. The result is shuffled so
  * languages and topics interleave, but new cards of the same language keep
  * their topic order.
+ *
+ * When `onlyIds` is provided, the candidate pool (both reviewed and new) is
+ * restricted to those card ids; if fewer than `cardCount` of them are due,
+ * remaining reviewed cards in `onlyIds` are included for early review.
  */
 export function buildSession(opts: {
   cards: PracticeCard[];
@@ -130,24 +134,40 @@ export function buildSession(opts: {
   newLimit: number;
   weights: LangWeights;
   now?: Date;
+  onlyIds?: string[];
 }): SessionItem[] {
-  const { cards, reviews, mode, cardCount, newLimit, weights } = opts;
+  const { cards, reviews, mode, cardCount, newLimit, weights, onlyIds } = opts;
   const now = opts.now ?? new Date();
-  const active = cards.filter((c) => ACTIVE_LANGS.includes(c.lang));
+  const nowMs = now.getTime();
+  const allowed = onlyIds !== undefined ? new Set(onlyIds) : null;
+  const active = cards.filter((c) => ACTIVE_LANGS.includes(c.lang) && (!allowed || allowed.has(c.id)));
   const pool = mode === 'mixed' ? active : active.filter((c) => c.lang === mode);
 
+  const isDue = (c: PracticeCard) => Boolean(reviews[c.id]) && new Date(reviews[c.id].due).getTime() <= nowMs;
+
   const due = pool
-    .filter((c) => reviews[c.id] && new Date(reviews[c.id].due) <= now)
+    .filter(isDue)
     .map((c) => ({ c, r: retrievability(reviews[c.id], now) }))
     .sort((a, b) => a.r - b.r)
     .slice(0, cardCount)
     .map(({ c }) => c);
 
-  const slots = Math.max(0, Math.min(newLimit, cardCount - due.length));
+  const early =
+    allowed && due.length < cardCount
+      ? pool
+          .filter((c) => Boolean(reviews[c.id]) && !isDue(c))
+          .map((c) => ({ c, r: retrievability(reviews[c.id], now) }))
+          .sort((a, b) => a.r - b.r)
+          .slice(0, cardCount - due.length)
+          .map(({ c }) => c)
+      : [];
+
+  const reviewed = [...due, ...early];
+  const slots = Math.max(0, Math.min(newLimit, cardCount - reviewed.length));
   const fresh = pickNew(pool, reviews, slots, mode, weights);
 
   const items = shuffle<SessionItem>([
-    ...due.map((card) => ({ card, isNew: false })),
+    ...reviewed.map((card) => ({ card, isNew: false })),
     ...fresh.map((card) => ({ card, isNew: true })),
   ]);
 
