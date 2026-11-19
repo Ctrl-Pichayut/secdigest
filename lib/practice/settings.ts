@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import type { LangWeights } from './scheduler';
+import { ACTIVE_LANGS, LANGS } from './types';
 
 /**
  * Practice preferences. These are per-device conveniences, so they live in
@@ -23,8 +24,15 @@ export const WEIGHT_PRESETS: { id: string; label: string; weights: LangWeights }
   { id: 'balanced', label: 'Balanced', weights: { python: 25, c: 25, js: 25, java: 25 } },
 ];
 
+function defaultWeights(): LangWeights {
+  if (ACTIVE_LANGS.length === 1) {
+    return Object.fromEntries(LANGS.map((l) => [l, l === ACTIVE_LANGS[0] ? 100 : 0])) as LangWeights;
+  }
+  return WEIGHT_PRESETS[0].weights;
+}
+
 export const DEFAULT_SETTINGS: PracticeSettings = {
-  weights: WEIGHT_PRESETS[0].weights,
+  weights: defaultWeights(),
   weeklyGoal: 4,
   newPerSession: 5,
 };
@@ -37,7 +45,8 @@ function read(): PracticeSettings {
     if (!raw) return DEFAULT_SETTINGS;
     const parsed = JSON.parse(raw) as Partial<PracticeSettings>;
     return {
-      weights: { ...DEFAULT_SETTINGS.weights, ...(parsed.weights ?? {}) },
+      // With a single active language, ignore any saved multi-language weights.
+      weights: ACTIVE_LANGS.length === 1 ? DEFAULT_SETTINGS.weights : { ...DEFAULT_SETTINGS.weights, ...(parsed.weights ?? {}) },
       weeklyGoal: Math.min(7, Math.max(1, parsed.weeklyGoal ?? DEFAULT_SETTINGS.weeklyGoal)),
       newPerSession: Math.min(10, Math.max(0, parsed.newPerSession ?? DEFAULT_SETTINGS.newPerSession)),
     };
@@ -55,7 +64,11 @@ export function usePracticeSettings() {
 
   const update = useCallback((patch: Partial<PracticeSettings>) => {
     setSettings((prev) => {
-      const next = { ...prev, ...patch };
+      const next = {
+        ...prev,
+        ...patch,
+        ...(ACTIVE_LANGS.length === 1 ? { weights: DEFAULT_SETTINGS.weights } : {}),
+      };
       try {
         localStorage.setItem(KEY, JSON.stringify(next));
       } catch {

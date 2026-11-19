@@ -48,6 +48,7 @@ export default function NewsCard({
   const [isThai, setIsThai] = useState(false);
   const countdown = getCtfCountdown(item.event_start_date);
   const hasThai = Boolean(item.tldr_th);
+  const isBreaking = Boolean(item.is_breaking);
 
   const isDusk = theme === 'dusk';
 
@@ -56,35 +57,40 @@ export default function NewsCard({
     ? {
         AI_FREE: {
           label: '🎁 Free AI & Credits',
-          cardBg: 'bg-[#1D2E2B] border-[#2E4B45]',
+          cardBg: 'bg-[#1D2E2B]',
+          cardBorder: 'border-[#2E4B45]',
           badgeClass: 'bg-emerald-950/80 text-emerald-300 border-emerald-700/60',
           takeawayBox: 'bg-[#161320]/70 border border-white/10 text-[#E2DCF0]',
           takeawayLabel: 'text-emerald-300',
         },
         CTF_COMPETITION: {
           label: '🏆 CTF Event',
-          cardBg: 'bg-[#28223B] border-[#433963]',
+          cardBg: 'bg-[#28223B]',
+          cardBorder: 'border-[#433963]',
           badgeClass: 'bg-violet-950/80 text-violet-300 border-violet-700/60',
           takeawayBox: 'bg-[#161320]/70 border border-white/10 text-[#E2DCF0]',
           takeawayLabel: 'text-violet-300',
         },
         CVE_SECURITY: {
           label: '🔥 Security Alert',
-          cardBg: 'bg-[#332224] border-[#54363A]',
+          cardBg: 'bg-[#332224]',
+          cardBorder: 'border-[#54363A]',
           badgeClass: 'bg-rose-950/80 text-rose-300 border-rose-700/60',
           takeawayBox: 'bg-[#161320]/70 border border-white/10 text-[#E2DCF0]',
           takeawayLabel: 'text-rose-300',
         },
         DEV_CLOUD: {
           label: '☁️ Dev & Cloud',
-          cardBg: 'bg-[#1E2938] border-[#31455E]',
+          cardBg: 'bg-[#1E2938]',
+          cardBorder: 'border-[#31455E]',
           badgeClass: 'bg-sky-950/80 text-sky-300 border-sky-700/60',
           takeawayBox: 'bg-[#161320]/70 border border-white/10 text-[#E2DCF0]',
           takeawayLabel: 'text-sky-300',
         },
       }[item.category] || {
         label: item.category,
-        cardBg: 'bg-[#2A263A] border-[#3E3852]',
+        cardBg: 'bg-[#2A263A]',
+        cardBorder: 'border-[#3E3852]',
         badgeClass: 'bg-[#37324A] text-[#D8D2E7] border-[#4A4462]',
         takeawayBox: 'bg-[#161320]/70 border border-white/10 text-[#E2DCF0]',
         takeawayLabel: 'text-[#D8D2E7]',
@@ -92,53 +98,81 @@ export default function NewsCard({
     : {
         AI_FREE: {
           label: '🎁 Free AI & Credits',
-          cardBg: 'bg-[#DFECE6] border-[#B8D8CA]',
+          cardBg: 'bg-[#DFECE6]',
+          cardBorder: 'border-[#B8D8CA]',
           badgeClass: 'bg-[#C8E0D5] text-[#1E4D3B] border-[#A8CEBC]',
           takeawayBox: 'bg-[#EFECE6]/90 border border-black/5 text-[#3A3530]',
           takeawayLabel: 'text-[#1E4D3B]',
         },
         CTF_COMPETITION: {
           label: '🏆 CTF Event',
-          cardBg: 'bg-[#E6E1F0] border-[#C8BFE0]',
+          cardBg: 'bg-[#E6E1F0]',
+          cardBorder: 'border-[#C8BFE0]',
           badgeClass: 'bg-[#D6CDE7] text-[#3D2E5E] border-[#BDB2D6]',
           takeawayBox: 'bg-[#EFECE6]/90 border border-black/5 text-[#3A3530]',
           takeawayLabel: 'text-[#3D2E5E]',
         },
         CVE_SECURITY: {
           label: '🔥 Security Alert',
-          cardBg: 'bg-[#F2E2DA] border-[#E0C2B4]',
+          cardBg: 'bg-[#F2E2DA]',
+          cardBorder: 'border-[#E0C2B4]',
           badgeClass: 'bg-[#E8CFC2] text-[#5C2E1B] border-[#D9B7A6]',
           takeawayBox: 'bg-[#EFECE6]/90 border border-black/5 text-[#3A3530]',
           takeawayLabel: 'text-[#5C2E1B]',
         },
         DEV_CLOUD: {
           label: '☁️ Dev & Cloud',
-          cardBg: 'bg-[#DEE9F2] border-[#B9D0E4]',
+          cardBg: 'bg-[#DEE9F2]',
+          cardBorder: 'border-[#B9D0E4]',
           badgeClass: 'bg-[#C7DCED] text-[#1B4366] border-[#A6C7E0]',
           takeawayBox: 'bg-[#EFECE6]/90 border border-black/5 text-[#3A3530]',
           takeawayLabel: 'text-[#1B4366]',
         },
       }[item.category] || {
         label: item.category,
-        cardBg: 'bg-[#EDE8DF] border-[#D2C9B8]',
+        cardBg: 'bg-[#EDE8DF]',
+        cardBorder: 'border-[#D2C9B8]',
         badgeClass: 'bg-[#DCD5C9] text-[#2A2623] border-[#CEC5B4]',
         takeawayBox: 'bg-[#EFECE6]/90 border border-black/5 text-[#3A3530]',
         takeawayLabel: 'text-[#2A2623]',
       };
 
+  const cardBorderClass = isBreaking
+    ? isDusk
+      ? 'border-rose-500/75'
+      : 'border-rose-500/70'
+    : categoryMeta.cardBorder;
+
   return (
     <article
       data-testid={`news-card-${item.id}`}
-      className={`relative rounded-3xl p-5 shadow-sm border-2 transition-all duration-200 ${categoryMeta.cardBg}`}
+      className={`relative rounded-3xl p-5 shadow-sm border-2 transition-all duration-200 ${categoryMeta.cardBg} ${cardBorderClass}`}
     >
-      {/* Category, Countdown & Language Top Bar (No duplicate top Saved badge) */}
+      {/* Category, Breaking, Countdown & Language Top Bar (No duplicate top Saved badge) */}
       <div className="flex items-center justify-between gap-2 mb-3">
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-1.5 flex-wrap">
           <span
             className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold border shadow-2xs ${categoryMeta.badgeClass}`}
           >
             {categoryMeta.label}
           </span>
+
+          {isBreaking && (
+            <span
+              data-testid={`badge-breaking-${item.id}`}
+              className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-extrabold uppercase tracking-wide border shadow-2xs ${
+                isDusk
+                  ? 'bg-rose-600/85 text-[#FAF7F2] border-rose-400/60'
+                  : 'bg-rose-700 text-[#FAF7F2] border-rose-800'
+              }`}
+            >
+              <span
+                aria-hidden="true"
+                className="w-1.5 h-1.5 rounded-full bg-rose-200 shrink-0"
+              />
+              BREAKING
+            </span>
+          )}
 
           {countdown && (
             <span

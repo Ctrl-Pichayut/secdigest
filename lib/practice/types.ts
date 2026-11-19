@@ -9,6 +9,9 @@ export type Lang = 'python' | 'c' | 'js' | 'java';
 
 export const LANGS: Lang[] = ['python', 'c', 'js', 'java'];
 
+// Languages currently shown and scheduled; add 'c', 'js', or 'java' here to bring a language back.
+export const ACTIVE_LANGS: Lang[] = ['python'];
+
 export const LANG_META: Record<Lang, { label: string; short: string; emoji: string }> = {
   python: { label: 'Python', short: 'PY', emoji: '🐍' },
   c: { label: 'C', short: 'C', emoji: '⚙️' },

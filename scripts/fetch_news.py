@@ -728,6 +728,7 @@ def save_to_supabase(supabase_client: Client, curated_items: List[CuratedNewsIte
         payload.append({
             "source_id": item.source_id,
             "category": category_str,
+            "is_breaking": item.is_breaking,
             "title": item.title,
             "tldr": item.tldr,
             "actionable_value": item.actionable_value,
@@ -739,7 +740,22 @@ def save_to_supabase(supabase_client: Client, curated_items: List[CuratedNewsIte
         })
 
     logger.info(f"Upserting {len(payload)} items into Supabase public.news_items...")
-    resp = supabase_client.table("news_items").upsert(payload, on_conflict="source_id").execute()
+    try:
+        resp = supabase_client.table("news_items").upsert(payload, on_conflict="source_id").execute()
+    except Exception as e:
+        err_text = str(e)
+        if "is_breaking" in err_text.lower() or "pgrst204" in err_text.lower():
+            logger.warning(
+                "Column 'is_breaking' not found in public.news_items (run supabase_phase11_breaking.sql); "
+                "retrying upsert without 'is_breaking'."
+            )
+            fallback_payload = [
+                {k: v for k, v in row.items() if k != "is_breaking"}
+                for row in payload
+            ]
+            resp = supabase_client.table("news_items").upsert(fallback_payload, on_conflict="source_id").execute()
+        else:
+            raise
     inserted_count = len(resp.data) if resp.data else len(payload)
     logger.info(f"Successfully upserted {inserted_count} rows into news_items.")
     return inserted_count

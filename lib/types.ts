@@ -16,6 +16,7 @@ export interface NewsItem {
   event_start_date: string | null;
   is_bookmarked: boolean;
   is_read: boolean;
+  is_breaking?: boolean | null;
   created_at: string;
   tldr_th?: string | null;
   actionable_value_th?: string | null;

@@ -176,6 +176,10 @@ export default function HomePage() {
     return [...list].sort((a, b) => {
       const readDiff = Number(a.is_read) - Number(b.is_read);
       if (readDiff !== 0) return readDiff;
+      if (!a.is_read) {
+        const breakingDiff = Number(Boolean(b.is_breaking)) - Number(Boolean(a.is_breaking));
+        if (breakingDiff !== 0) return breakingDiff;
+      }
       return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
     });
   }, [items, activeFilter]);

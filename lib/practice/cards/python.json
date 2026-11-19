@@ -956,6 +956,168 @@
     "explanation": "json.loads turns JSON true/false/null into Python True/False/None. json.dumps goes the other way."
   },
   {
+    "id": "py-063",
+    "lang": "python",
+    "topic": "Secure coding",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import sqlite3\ndb = sqlite3.connect(':memory:')\ndb.execute('CREATE TABLE u (name TEXT)')\ndb.execute(\"INSERT INTO u VALUES ('admin')\")\ninp = \"' OR '1'='1\"\na = db.execute(f\"SELECT * FROM u WHERE name='{inp}'\")\nb = db.execute('SELECT * FROM u WHERE name=?', (inp,))\nprint(len(a.fetchall()), len(b.fetchall()))",
+    "choices": [
+      "1 0",
+      "0 0",
+      "1 1",
+      "OperationalError"
+    ],
+    "answer": 0,
+    "explanation": "Building SQL with an f-string lets ' OR '1'='1 change the query logic and return the admin row. Parameterized ? placeholders bind input as data, never as SQL syntax."
+  },
+  {
+    "id": "py-064",
+    "lang": "python",
+    "topic": "Secure coding",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import os.path\nbase = '/srv/files'\na = os.path.join(base, 'doc.txt')\nb = os.path.join(base, '/etc/passwd')\nprint(a)\nprint(b)",
+    "choices": [
+      "/srv/files/doc.txt\n/etc/passwd",
+      "/srv/files/doc.txt\n/srv/files/etc/passwd",
+      "/srv/files/doc.txt\n/srv/files//etc/passwd",
+      "ValueError"
+    ],
+    "answer": 0,
+    "explanation": "If a later argument to os.path.join() is an absolute path, it silently discards everything before it. Never rely on os.path.join() alone to keep user input inside a base directory."
+  },
+  {
+    "id": "py-065",
+    "lang": "python",
+    "topic": "Secure coding",
+    "kind": "order",
+    "prompt": "Put the lines in order so this blocks path traversal and prints False.",
+    "lines": [
+      "from pathlib import Path",
+      "def is_safe(base, name):",
+      "    root = Path(base).resolve()",
+      "    target = (root / name).resolve()",
+      "    return target.is_relative_to(root)",
+      "print(is_safe('/srv/files', '../secret.txt'))"
+    ],
+    "explanation": "Resolving both paths collapses '..' segments and symlinks, and is_relative_to(root) then rejects both traversal and absolute paths like '/etc/passwd'.",
+    "expectOutput": "False"
+  },
+  {
+    "id": "py-066",
+    "lang": "python",
+    "topic": "Secure coding",
+    "kind": "bug",
+    "prompt": "Passing 'a; id' as folder runs an extra command. Which line is the security bug?",
+    "lines": [
+      "def list_dir(folder):",
+      "    if not folder:",
+      "        return None",
+      "    return subprocess.run(f'ls {folder}', shell=True)"
+    ],
+    "bugLine": 3,
+    "fixedLine": "    return subprocess.run(['ls', folder])",
+    "explanation": "With shell=True, the shell interprets metacharacters like ; or $(...) inside the formatted string. Pass an argument list like ['ls', folder] with shell=False (the default) instead."
+  },
+  {
+    "id": "py-067",
+    "lang": "python",
+    "topic": "Secure coding",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import random\nrandom.seed(42)\na = random.randint(1000, 9999)\nrandom.seed(42)\nb = random.randint(1000, 9999)\nprint(a == b)",
+    "choices": [
+      "True",
+      "False",
+      "Unpredictable",
+      "TypeError"
+    ],
+    "answer": 0,
+    "explanation": "random is a deterministic PRNG whose outputs can be reproduced from its seed or internal state. Use secrets.token_urlsafe() or secrets.token_hex() for tokens and keys."
+  },
+  {
+    "id": "py-068",
+    "lang": "python",
+    "topic": "Secure coding",
+    "kind": "bug",
+    "prompt": "This secret check leaks timing info about the key. Which line is the security bug?",
+    "lines": [
+      "def verify_api_key(provided, expected):",
+      "    if not isinstance(provided, str):",
+      "        return False",
+      "    return provided == expected"
+    ],
+    "bugLine": 3,
+    "fixedLine": "    return hmac.compare_digest(provided, expected)",
+    "explanation": "== stops at the first mismatched character, so timing differences can leak the secret prefix byte by byte. Use hmac.compare_digest() for constant-time comparison."
+  },
+  {
+    "id": "py-069",
+    "lang": "python",
+    "topic": "Secure coding",
+    "kind": "output",
+    "prompt": "What happens when this runs?",
+    "code": "import ast\nast.literal_eval('__import__(\"os\")')",
+    "choices": [
+      "Imports the os module",
+      "Returns '__import__(\"os\")'",
+      "ValueError",
+      "SyntaxError"
+    ],
+    "answer": 2,
+    "explanation": "Unlike eval(), ast.literal_eval() only accepts Python literals (strings, numbers, lists, dicts) and raises ValueError on function calls or arbitrary expressions.",
+    "raises": "ValueError"
+  },
+  {
+    "id": "py-070",
+    "lang": "python",
+    "topic": "Secure coding",
+    "kind": "bug",
+    "prompt": "raw_bytes comes from an untrusted HTTP cookie. Which line is the security bug?",
+    "lines": [
+      "def load_profile(raw_bytes):",
+      "    if len(raw_bytes) > 4096:",
+      "        raise ValueError('too large')",
+      "    return pickle.loads(raw_bytes)"
+    ],
+    "bugLine": 3,
+    "fixedLine": "    return json.loads(raw_bytes)",
+    "explanation": "pickle.loads() can execute arbitrary code via __reduce__ gadgets during deserialization. Use a data-only format like json.loads() for untrusted input."
+  },
+  {
+    "id": "py-071",
+    "lang": "python",
+    "topic": "Secure coding",
+    "kind": "bug",
+    "prompt": "Passwords hashed here can be cracked rapidly offline. Which line is the security bug?",
+    "lines": [
+      "def hash_password(password, salt):",
+      "    pw = password.encode('utf-8')",
+      "    key = hashlib.sha256(pw).digest()",
+      "    return salt.hex() + ':' + key.hex()"
+    ],
+    "bugLine": 2,
+    "fixedLine": "    key = hashlib.scrypt(pw, salt=salt, n=16384, r=8, p=1)",
+    "explanation": "Plain SHA-256 is built for speed and ignores the salt, making rainbow tables and GPU cracking easy. Use a slow, salted password KDF like hashlib.scrypt() or hashlib.pbkdf2_hmac()."
+  },
+  {
+    "id": "py-072",
+    "lang": "python",
+    "topic": "Secure coding",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import hashlib\nk1 = hashlib.pbkdf2_hmac('sha256', b'pw', b's1', 1000)\nk2 = hashlib.pbkdf2_hmac('sha256', b'pw', b's1', 1000)\nk3 = hashlib.pbkdf2_hmac('sha256', b'pw', b's2', 1000)\nprint(k1 == k2, k1 == k3, len(k1))",
+    "choices": [
+      "True False 32",
+      "True True 32",
+      "True False 64",
+      "False False 32"
+    ],
+    "answer": 0,
+    "explanation": "A unique per-user salt ensures identical passwords produce different 32-byte keys, while reusing the stored salt reproduces the key at login. Use >= 600,000 iterations or scrypt in production."
+  },
+  {
     "id": "py-058",
     "lang": "python",
     "topic": "CTF toolbox",

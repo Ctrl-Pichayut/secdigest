@@ -47,6 +47,8 @@ import verify_practice_cards as verify
 logger = logging.getLogger("practice_refill")
 
 PRIORITY = ("python", "c", "js", "java")
+# Languages currently enabled for refill; add 'c', 'js', or 'java' here to bring a language back.
+ACTIVE = ("python",)
 LANG_LABEL = {"python": "Python", "c": "C", "js": "JavaScript", "java": "Java"}
 # Minimum unseen cards to keep per language once it is being practiced.
 FLOOR = {"python": 10, "c": 6, "js": 4, "java": 4}
@@ -124,6 +126,8 @@ def plan_refills(cards_by_lang: dict[str, list[dict]], reviews: list[dict], now:
     since = now - timedelta(days=PACE_WINDOW_DAYS)
     plans = []
     for lang in PRIORITY:
+        if lang not in ACTIVE:
+            continue
         cards = cards_by_lang.get(lang, [])
         unseen = sum(1 for c in cards if c["id"] not in seen)
         introduced = sum(1 for r in reviews if r.get("lang") == lang and parse_ts(r["introduced_at"]) >= since)
@@ -327,7 +331,7 @@ def connect() -> Any:
 def main() -> int:
     env_force = (os.getenv("PRACTICE_FORCE_LANG") or "").strip().lower()
     parser = argparse.ArgumentParser(description="Refill Practice cards when running low")
-    parser.add_argument("--force-lang", choices=PRIORITY, default=env_force if env_force in PRIORITY else None,
+    parser.add_argument("--force-lang", choices=ACTIVE, default=env_force if env_force in ACTIVE else None,
                         help="generate one batch for this language even if it is not low (env: PRACTICE_FORCE_LANG)")
     parser.add_argument("--dry-run", action="store_true", help="show the plan (and vet --input-json) without calling Gemini or writing")
     parser.add_argument("--offline", action="store_true", help="skip Supabase: no review history, no writes (implies --dry-run)")

@@ -8,7 +8,7 @@ import { usePracticeCards } from '@/lib/practice/remoteCards';
 import { buildSession, computeStats, SESSION_SIZES, type SessionItem } from '@/lib/practice/scheduler';
 import { usePractice, type SyncStatus } from '@/lib/practice/store';
 import { presetIdFor, usePracticeSettings, WEIGHT_PRESETS } from '@/lib/practice/settings';
-import { LANG_META, LANGS, type SessionMode } from '@/lib/practice/types';
+import { ACTIVE_LANGS, LANG_META, type SessionMode } from '@/lib/practice/types';
 import PracticeSession from '@/components/practice/PracticeSession';
 import { GoalBar, LangChip, palette } from '@/components/practice/ui';
 
@@ -52,8 +52,10 @@ export default function PracticePage() {
   const p = palette(isDusk);
   const { ready, reviews, sessions, status, pendingCount } = usePractice();
   const { settings, update } = usePracticeSettings();
+  const multiLang = ACTIVE_LANGS.length > 1;
+  const defaultMode: SessionMode = multiLang ? 'mixed' : ACTIVE_LANGS[0];
   const [sizeIdx, setSizeIdx] = useState(1);
-  const [mode, setMode] = useState<SessionMode>('mixed');
+  const [mode, setMode] = useState<SessionMode>(defaultMode);
   const [showSettings, setShowSettings] = useState(false);
   const [session, setSession] = useState<{ items: SessionItem[]; minutes: number; mode: SessionMode; key: number } | null>(null);
 
@@ -82,7 +84,7 @@ export default function PracticePage() {
     const n = Number(new URLSearchParams(window.location.search).get('start'));
     if (n > 0) {
       window.history.replaceState(null, '', '/practice');
-      start(n, 'mixed');
+      start(n, defaultMode);
     }
     // Only on first load, once progress is available (start is intentionally not a dependency).
   }, [ready]);
@@ -92,17 +94,17 @@ export default function PracticePage() {
     const due = mode === 'mixed' ? stats.dueTotal : stats.perLang[mode].due;
     const unseen =
       mode === 'mixed'
-        ? LANGS.filter((l) => settings.weights[l] > 0).reduce((sum, l) => sum + stats.perLang[l].unseen, 0)
+        ? ACTIVE_LANGS.filter((l) => !multiLang || settings.weights[l] > 0).reduce((sum, l) => sum + stats.perLang[l].unseen, 0)
         : stats.perLang[mode].unseen;
     const reviewsN = Math.min(due, size.cards);
     const newN = Math.min(unseen, settings.newPerSession, size.cards - reviewsN);
     return { reviewsN, newN, total: reviewsN + newN };
-  }, [mode, stats, settings, size]);
+  }, [mode, multiLang, stats, settings, size]);
 
   const presetId = presetIdFor(settings.weights);
   const modes: { id: SessionMode; label: string }[] = [
     { id: 'mixed', label: 'Mixed' },
-    ...LANGS.map((l) => ({ id: l as SessionMode, label: LANG_META[l].label === 'JavaScript' ? 'JS' : LANG_META[l].label })),
+    ...ACTIVE_LANGS.map((l) => ({ id: l as SessionMode, label: LANG_META[l].label === 'JavaScript' ? 'JS' : LANG_META[l].label })),
   ];
 
   return (
@@ -169,22 +171,24 @@ export default function PracticePage() {
               </div>
             </div>
 
-            <div>
-              <div className={`text-[11px] font-bold uppercase tracking-wider mb-2 ${p.muted}`}>Languages</div>
-              <div className="flex gap-2 overflow-x-auto no-scrollbar -mx-1 px-1">
-                {modes.map((m) => (
-                  <button
-                    key={m.id}
-                    type="button"
-                    onClick={() => setMode(m.id)}
-                    aria-pressed={m.id === mode}
-                    className={`shrink-0 px-3.5 min-h-[40px] rounded-full border text-xs font-bold touch-manipulation transition-colors ${m.id === mode ? p.chipActive : p.chipIdle}`}
-                  >
-                    {m.label}
-                  </button>
-                ))}
+            {multiLang && (
+              <div>
+                <div className={`text-[11px] font-bold uppercase tracking-wider mb-2 ${p.muted}`}>Languages</div>
+                <div className="flex gap-2 overflow-x-auto no-scrollbar -mx-1 px-1">
+                  {modes.map((m) => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => setMode(m.id)}
+                      aria-pressed={m.id === mode}
+                      className={`shrink-0 px-3.5 min-h-[40px] rounded-full border text-xs font-bold touch-manipulation transition-colors ${m.id === mode ? p.chipActive : p.chipIdle}`}
+                    >
+                      {m.label}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
 
             <motion.button
               type="button"
@@ -209,7 +213,7 @@ export default function PracticePage() {
           {/* Per-language progress */}
           <section className={`rounded-2xl p-4 border space-y-3 ${p.panel}`}>
             <div className={`text-[11px] font-bold uppercase tracking-wider ${p.muted}`}>Your progress</div>
-            {LANGS.map((lang) => {
+            {ACTIVE_LANGS.map((lang) => {
               const s = stats.perLang[lang];
               const pct = s.total > 0 ? Math.round((s.seen / s.total) * 100) : 0;
               return (
@@ -218,7 +222,7 @@ export default function PracticePage() {
                     <LangChip lang={lang} isDusk={isDusk} small />
                     <span className={`text-[11px] font-semibold tabular-nums ${p.muted}`}>
                       {s.seen}/{s.total} learned{s.due > 0 && ` · ${s.due} due`}
-                      {mode === 'mixed' && ` · ${settings.weights[lang]}% of new`}
+                      {multiLang && mode === 'mixed' && ` · ${settings.weights[lang]}% of new`}
                     </span>
                   </div>
                   <div className={`h-1.5 rounded-full overflow-hidden border ${p.track}`}>
@@ -258,25 +262,27 @@ export default function PracticePage() {
                   className="overflow-hidden"
                 >
                   <div className="px-4 pb-4 space-y-4">
-                    <div>
-                      <div className={`text-xs font-bold mb-1 ${p.strong}`}>Language mix for new cards</div>
-                      <p className={`text-[11px] mb-2 ${p.faint}`}>
-                        Cards you&apos;ve already learned always come back when due, whatever the mix.
-                      </p>
-                      <div className="flex flex-wrap gap-2">
-                        {WEIGHT_PRESETS.map((preset) => (
-                          <button
-                            key={preset.id}
-                            type="button"
-                            onClick={() => update({ weights: preset.weights })}
-                            aria-pressed={preset.id === presetId}
-                            className={`px-3.5 min-h-[40px] rounded-full border text-xs font-bold touch-manipulation ${preset.id === presetId ? p.chipActive : p.chipIdle}`}
-                          >
-                            {preset.label}
-                          </button>
-                        ))}
+                    {multiLang && (
+                      <div>
+                        <div className={`text-xs font-bold mb-1 ${p.strong}`}>Language mix for new cards</div>
+                        <p className={`text-[11px] mb-2 ${p.faint}`}>
+                          Cards you&apos;ve already learned always come back when due, whatever the mix.
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          {WEIGHT_PRESETS.map((preset) => (
+                            <button
+                              key={preset.id}
+                              type="button"
+                              onClick={() => update({ weights: preset.weights })}
+                              aria-pressed={preset.id === presetId}
+                              className={`px-3.5 min-h-[40px] rounded-full border text-xs font-bold touch-manipulation ${preset.id === presetId ? p.chipActive : p.chipIdle}`}
+                            >
+                              {preset.label}
+                            </button>
+                          ))}
+                        </div>
                       </div>
-                    </div>
+                    )}
                     <div className="flex items-center justify-between gap-3">
                       <div>
                         <div className={`text-xs font-bold ${p.strong}`}>Weekly goal</div>

@@ -8,7 +8,7 @@ import { usePracticeCards } from '@/lib/practice/remoteCards';
 import { computeStats } from '@/lib/practice/scheduler';
 import { usePractice } from '@/lib/practice/store';
 import { usePracticeSettings } from '@/lib/practice/settings';
-import { LANGS } from '@/lib/practice/types';
+import { ACTIVE_LANGS } from '@/lib/practice/types';
 import { GoalBar, palette } from './ui';
 
 /**
@@ -24,7 +24,10 @@ export default function TodayPracticeCard({ isDusk }: { isDusk: boolean }) {
   if (!ready) return null;
 
   const stats = computeStats(cards, reviews, sessions);
-  const unseen = LANGS.filter((l) => settings.weights[l] > 0).reduce((sum, l) => sum + stats.perLang[l].unseen, 0);
+  const unseen =
+    ACTIVE_LANGS.length === 1
+      ? stats.unseenTotal
+      : ACTIVE_LANGS.filter((l) => settings.weights[l] > 0).reduce((sum, l) => sum + stats.perLang[l].unseen, 0);
   const newReady = Math.min(unseen, settings.newPerSession);
   const headline =
     stats.dueTotal > 0

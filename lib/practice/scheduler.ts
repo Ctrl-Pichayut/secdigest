@@ -1,6 +1,6 @@
 import { createEmptyCard, fsrs, generatorParameters, type Card, type Grade } from 'ts-fsrs';
 import type { FsrsState, Lang, PracticeCard, ReviewRow, SessionMode, SessionRow } from './types';
-import { LANGS } from './types';
+import { ACTIVE_LANGS, LANGS } from './types';
 
 /**
  * Spaced-repetition scheduling on top of FSRS (ts-fsrs). Cards you keep
@@ -89,17 +89,18 @@ function shuffle<T>(arr: T[]): T[] {
 /** Pick `slots` unseen cards, weighted by language, each language in topic order. */
 function pickNew(pool: PracticeCard[], reviews: Record<string, ReviewRow>, slots: number, mode: SessionMode, weights: LangWeights): PracticeCard[] {
   const queues = new Map<Lang, PracticeCard[]>();
-  for (const lang of LANGS) {
+  for (const lang of ACTIVE_LANGS) {
     queues.set(lang, pool.filter((c) => c.lang === lang && !reviews[c.id]));
   }
+  const useWeights = mode === 'mixed' && ACTIVE_LANGS.length > 1;
   const picked: PracticeCard[] = [];
   for (let s = 0; s < slots; s++) {
-    // Single-language sessions ignore weights; mixed sessions draw a language
-    // per slot with probability proportional to its weight.
-    const candidates = LANGS.filter((l) => (queues.get(l)?.length ?? 0) > 0 && (mode !== 'mixed' || weights[l] > 0));
+    // Single-language sessions (or a single active language) ignore weights;
+    // mixed sessions draw a language per slot with probability proportional to its weight.
+    const candidates = ACTIVE_LANGS.filter((l) => (queues.get(l)?.length ?? 0) > 0 && (!useWeights || weights[l] > 0));
     if (candidates.length === 0) break;
     let lang = candidates[0];
-    if (mode === 'mixed' && candidates.length > 1) {
+    if (useWeights && candidates.length > 1) {
       const total = candidates.reduce((sum, l) => sum + weights[l], 0);
       let r = Math.random() * total;
       for (const l of candidates) {
@@ -132,7 +133,8 @@ export function buildSession(opts: {
 }): SessionItem[] {
   const { cards, reviews, mode, cardCount, newLimit, weights } = opts;
   const now = opts.now ?? new Date();
-  const pool = mode === 'mixed' ? cards : cards.filter((c) => c.lang === mode);
+  const active = cards.filter((c) => ACTIVE_LANGS.includes(c.lang));
+  const pool = mode === 'mixed' ? active : active.filter((c) => c.lang === mode);
 
   const due = pool
     .filter((c) => reviews[c.id] && new Date(reviews[c.id].due) <= now)
@@ -150,7 +152,7 @@ export function buildSession(opts: {
   ]);
 
   // Restore topic order among new cards of the same language.
-  for (const lang of LANGS) {
+  for (const lang of ACTIVE_LANGS) {
     const positions = items.map((it, i) => (it.isNew && it.card.lang === lang ? i : -1)).filter((i) => i >= 0);
     const ordered = fresh.filter((c) => c.lang === lang);
     positions.forEach((pos, k) => {
@@ -189,6 +191,7 @@ export interface PracticeStats {
 export function computeStats(cards: PracticeCard[], reviews: Record<string, ReviewRow>, sessions: SessionRow[], now = new Date()): PracticeStats {
   const perLang = Object.fromEntries(LANGS.map((l) => [l, { total: 0, seen: 0, due: 0, unseen: 0 }])) as Record<Lang, LangStats>;
   for (const c of cards) {
+    if (!ACTIVE_LANGS.includes(c.lang)) continue;
     const s = perLang[c.lang];
     s.total++;
     const r = reviews[c.id];
@@ -205,8 +208,8 @@ export function computeStats(cards: PracticeCard[], reviews: Record<string, Revi
   const finished = sessions.map((s) => new Date(s.finished_at).getTime());
   return {
     perLang,
-    dueTotal: LANGS.reduce((sum, l) => sum + perLang[l].due, 0),
-    unseenTotal: LANGS.reduce((sum, l) => sum + perLang[l].unseen, 0),
+    dueTotal: ACTIVE_LANGS.reduce((sum, l) => sum + perLang[l].due, 0),
+    unseenTotal: ACTIVE_LANGS.reduce((sum, l) => sum + perLang[l].unseen, 0),
     weekSessions: finished.filter((t) => t >= weekStart).length,
     practicedToday: finished.some((t) => t >= todayStart.getTime()),
   };
