@@ -9,6 +9,9 @@
 //
 // Override the target server URL if needed:
 //   BASE_URL=http://localhost:3005 npm run e2e
+//
+// Override the Chromium executable if a local browser build differs from Playwright's default:
+//   PLAYWRIGHT_CHROMIUM_PATH=/path/to/chromium npm run e2e
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -297,7 +300,11 @@ async function main() {
 
   let browser;
   try {
-    browser = await chromium.launch({ headless: true });
+    const executablePath = process.env.PLAYWRIGHT_CHROMIUM_PATH;
+    browser = await chromium.launch({
+      headless: true,
+      ...(executablePath ? { executablePath } : {}),
+    });
     const context = await browser.newContext({
       viewport: VIEWPORT,
       hasTouch: true,

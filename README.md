@@ -115,6 +115,15 @@ npm run dev
 NEXT_PUBLIC_SUPABASE_URL=... NEXT_PUBLIC_SUPABASE_ANON_KEY=... npm run build
 ```
 
+## CI
+
+GitHub Actions (`.github/workflows/ci.yml`) runs on every push and pull request with read-only `contents` permissions, per-ref concurrency (`cancel-in-progress: true`), and no real repository secrets. It verifies:
+
+- TypeScript types (`npx tsc --noEmit`) and the Next.js production build (`npm run build`) using dummy Supabase environment variables.
+- Python ingestion unit tests (`python -m unittest discover -s scripts/tests -v`).
+- Bundled Python practice cards (`python scripts/verify_practice_cards.py --lang python`).
+- Playwright end-to-end smoke tests (`npm run e2e`) against the built app served on `http://localhost:3005` with mocked Supabase requests.
+
 ## License
 
 MIT
