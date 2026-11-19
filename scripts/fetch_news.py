@@ -397,6 +397,11 @@ def generate_content_with_fallback(
         }
         if is_gemini_3:
             config_kwargs["thinking_config"] = types.ThinkingConfig(thinking_level="low")
+        else:
+            # google-genai 3.x defaults to API version v1, where gemini-2.5 rejects
+            # JSON mode ("JSON mode is not enabled for api version v1"). Pin the
+            # 2.5 fallback to v1beta so the last model in the chain actually works.
+            config_kwargs["http_options"] = types.HttpOptions(api_version="v1beta")
 
         config = types.GenerateContentConfig(**config_kwargs)
 
@@ -709,19 +714,23 @@ def main() -> None:
     unseen_items = [item for item in candidates if item["source_id"] not in existing_ids]
     logger.info(f"Unseen items requiring processing: {len(unseen_items)} (out of {len(candidates)} total)")
 
-    # 4. Record all candidate source_ids into seen_sources so rejected items never loop back
     candidate_source_ids = [item["source_id"] for item in candidates if item.get("source_id")]
-    record_seen_sources(supabase_client, candidate_source_ids)
 
     if not unseen_items:
+        record_seen_sources(supabase_client, candidate_source_ids)
         logger.info("No new unseen items to curate today. Database is already up to date.")
         return
 
-    # 5. Curate and summarize via Gemini
+    # 4. Curate and summarize via Gemini
     curated_items = curate_with_gemini(unseen_items, gemini_api_key=gemini_api_key)
 
-    # 6. Save to Supabase
+    # 5. Save to Supabase
     save_to_supabase(supabase_client, curated_items)
+
+    # 6. Mark candidates as seen ONLY after curation and save succeeded. If Gemini or
+    #    the save fails, the run exits above and these items are retried tomorrow
+    #    instead of being silently dropped forever.
+    record_seen_sources(supabase_client, candidate_source_ids)
     logger.info("=== Ingestion Pipeline Completed Successfully ===")
 
 
