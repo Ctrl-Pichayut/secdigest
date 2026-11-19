@@ -13,6 +13,26 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
+html[data-theme="dusk"] body {
+  background-color: #1E1B29;
+  color: #EAE6F2;
+}
+
+/* Keep app content hidden on dusk devices until the first dusk client render commits. */
+html[data-theme="dusk"]:not([data-theme-ready]) body {
+  transition: none !important;
+}
+
+html[data-theme="dusk"]:not([data-theme-ready]) #__app {
+  visibility: hidden;
+}
+
+html[data-theme="dusk"]:not([data-theme-ready]) #__app *,
+html[data-theme="dusk"]:not([data-theme-ready]) #__app *::before,
+html[data-theme="dusk"]:not([data-theme-ready]) #__app *::after {
+  transition: none !important;
+}
+
 /* Smooth horizontal scrollbar hiding */
 .no-scrollbar::-webkit-scrollbar {
   display: none;
