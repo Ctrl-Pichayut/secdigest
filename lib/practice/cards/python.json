@@ -1118,6 +1118,202 @@
     "explanation": "A unique per-user salt ensures identical passwords produce different 32-byte keys, while reusing the stored salt reproduces the key at login. Use >= 600,000 iterations or scrypt in production."
   },
   {
+    "id": "py-073",
+    "lang": "python",
+    "topic": "Secure coding",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import html\ns = '<img src=\"x\">'\nprint(html.escape(s))",
+    "choices": [
+      "&lt;img src=&quot;x&quot;&gt;",
+      "&lt;img src=\"x\"&gt;",
+      "img src=\"x\"",
+      "<img src=\"x\">"
+    ],
+    "answer": 0,
+    "explanation": "html.escape() turns <, >, &, and by default quotes (\" and ') into HTML entities so browsers render them as text instead of markup. Escaping quotes also prevents attribute-breakout XSS inside HTML tags."
+  },
+  {
+    "id": "py-074",
+    "lang": "python",
+    "topic": "Secure coding",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import re\npat = r'[a-z]+'\nval = 'admin;id'\nprint(bool(re.match(pat, val)), bool(re.fullmatch(pat, val)))",
+    "choices": [
+      "True False",
+      "False False",
+      "True True",
+      "False True"
+    ],
+    "answer": 0,
+    "explanation": "re.match() only anchors at the start of the string, so 'admin;id' matches on its prefix 'admin' and lets trailing payloads slip through. Use re.fullmatch() for input validation so the entire string must match."
+  },
+  {
+    "id": "py-075",
+    "lang": "python",
+    "topic": "Secure coding",
+    "kind": "bug",
+    "prompt": "Input like 'aaaaaaaaaaaaaaaaaaaaaaaa!' stalls the CPU. Which line is the security bug?",
+    "lines": [
+      "def is_valid_token(text):",
+      "    if not isinstance(text, str):",
+      "        return False",
+      "    return bool(re.fullmatch(r'([a-z]+)+', text))"
+    ],
+    "bugLine": 3,
+    "fixedLine": "    return bool(re.fullmatch(r'[a-z]+', text))",
+    "explanation": "Nested quantifiers like ([a-z]+)+ cause exponential backtracking on non-matching input, leading to ReDoS (regex denial of service). Flatten the pattern to [a-z]+ so matching runs in linear time."
+  },
+  {
+    "id": "py-076",
+    "lang": "python",
+    "topic": "Secure coding",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import io, zipfile\nbuf = io.BytesIO()\nwith zipfile.ZipFile(buf, 'w') as z:\n    z.writestr('../cron.d/pwn', 'x')\nbuf.seek(0)\nwith zipfile.ZipFile(buf) as z:\n    print(z.namelist())",
+    "choices": [
+      "['../cron.d/pwn']",
+      "['cron.d/pwn']",
+      "['pwn']",
+      "ValueError"
+    ],
+    "answer": 0,
+    "explanation": "ZIP archives store entry names verbatim, including '../' segments. Joining a member name directly onto an output folder causes Zip Slip (arbitrary file write), so always verify resolved paths stay inside the target directory."
+  },
+  {
+    "id": "py-077",
+    "lang": "python",
+    "topic": "Secure coding",
+    "kind": "bug",
+    "prompt": "A local attacker can pre-create a symlink to hijack this write. Which line is the security bug?",
+    "lines": [
+      "def write_secret(data):",
+      "    if not data:",
+      "        return None",
+      "    fd = os.open('/tmp/secret', os.O_CREAT | os.O_WRONLY)",
+      "    os.write(fd, data)",
+      "    os.close(fd)"
+    ],
+    "bugLine": 3,
+    "fixedLine": "    fd, _ = tempfile.mkstemp()",
+    "explanation": "Opening a predictable path in shared /tmp without O_EXCL lets another local user pre-create a symlink and redirect the write or read the file. Use tempfile.mkstemp() (or NamedTemporaryFile), which atomically creates an exclusive, unpredictable 0600 file."
+  },
+  {
+    "id": "py-078",
+    "lang": "python",
+    "topic": "Secure coding",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import ipaddress\nips = ['127.0.0.1', '169.254.169.254', '1.1.1.1']\nprint([ipaddress.ip_address(x).is_private for x in ips])",
+    "choices": [
+      "[True, True, False]",
+      "[False, False, False]",
+      "[True, False, False]",
+      "[False, True, False]"
+    ],
+    "answer": 0,
+    "explanation": "ipaddress.ip_address().is_private is True for loopback (127.0.0.1), link-local cloud metadata (169.254.169.254), and RFC 1918 ranges. To block SSRF, resolve the host first and require ip.is_global rather than checking string prefixes."
+  },
+  {
+    "id": "py-079",
+    "lang": "python",
+    "topic": "Secure coding",
+    "kind": "bug",
+    "prompt": "An attacker can craft a colliding file that passes this check. Which line is the security bug?",
+    "lines": [
+      "def verify_release(data, expected_hex):",
+      "    if not data:",
+      "        return False",
+      "    digest = hashlib.md5(data).hexdigest()",
+      "    return hmac.compare_digest(digest, expected_hex)"
+    ],
+    "bugLine": 3,
+    "fixedLine": "    digest = hashlib.sha256(data).hexdigest()",
+    "explanation": "MD5 and SHA-1 are vulnerable to practical chosen-prefix collision attacks, so two different files can share the same digest. Use SHA-256 or SHA-3 for integrity checks and signatures (and a slow KDF like scrypt for passwords)."
+  },
+  {
+    "id": "py-080",
+    "lang": "python",
+    "topic": "Secure coding",
+    "kind": "order",
+    "prompt": "Put the lines in order so this signs a message with HMAC and prints True.",
+    "lines": [
+      "import hmac",
+      "def sign(key, msg):",
+      "    mac = hmac.new(key, msg, 'sha256')",
+      "    return mac.hexdigest()",
+      "print(hmac.compare_digest(sign(b'k', b'a'), sign(b'k', b'a')))"
+    ],
+    "explanation": "Plain hashlib.sha256(secret + msg) is vulnerable to length-extension attacks. hmac.new() binds key and message with a two-pass construction, and hmac.compare_digest() verifies tags in constant time.",
+    "expectOutput": "True"
+  },
+  {
+    "id": "py-081",
+    "lang": "python",
+    "topic": "Secure coding",
+    "kind": "bug",
+    "prompt": "Production log aggregators capture plaintext credentials here. Which line is the security bug?",
+    "lines": [
+      "def call_api(url, api_key):",
+      "    headers = {'Authorization': f'Bearer {api_key}'}",
+      "    logging.info('POST %s headers=%s', url, headers)",
+      "    return send_request(url, headers)"
+    ],
+    "bugLine": 2,
+    "fixedLine": "    logging.info('POST %s', url)",
+    "explanation": "Logging full request headers writes bearer tokens and API keys into log files and monitoring tools where many people and systems can read them. Log only non-sensitive metadata like the URL and status code, or explicitly redact secrets."
+  },
+  {
+    "id": "py-082",
+    "lang": "python",
+    "topic": "Secure coding",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import json\nfrom types import SimpleNamespace\nraw = '{\"user\": \"ann\", \"admin\": false}'\nu = json.loads(raw, object_hook=lambda d: SimpleNamespace(**d))\nprint(u.user, u.admin)",
+    "choices": [
+      "ann False",
+      "ann false",
+      "AttributeError",
+      "{'user': 'ann', 'admin': False}"
+    ],
+    "answer": 0,
+    "explanation": "object_hook converts each decoded JSON object into a Python object (here SimpleNamespace) safely without executing code. Never pass untrusted JSON-ish strings to eval() just to build objects—use json.loads() with an explicit hook."
+  },
+  {
+    "id": "py-083",
+    "lang": "python",
+    "topic": "Secure coding",
+    "kind": "output",
+    "prompt": "What happens when this runs?",
+    "code": "n = 10 ** 5000\nint('9' * 5000)",
+    "choices": [
+      "ValueError",
+      "OverflowError",
+      "MemoryError",
+      "Runs with no error"
+    ],
+    "answer": 0,
+    "explanation": "Python ints have arbitrary precision (10 ** 5000 never overflows), but converting huge base-10 strings takes quadratic time and can DoS a server. Python caps int()/str() at 4,300 digits by default and raises ValueError (configurable via sys.set_int_max_str_digits()).",
+    "raises": "ValueError"
+  },
+  {
+    "id": "py-084",
+    "lang": "python",
+    "topic": "Secure coding",
+    "kind": "bug",
+    "prompt": "Running the app with `python -O` lets non-admins delete records. Which line is the security bug?",
+    "lines": [
+      "def delete_account(user, account_id):",
+      "    assert user.is_admin, 'admin only'",
+      "    db.execute('DELETE FROM accounts WHERE id=?', (account_id,))",
+      "    return True"
+    ],
+    "bugLine": 1,
+    "fixedLine": "    if not user.is_admin: raise PermissionError('admin only')",
+    "explanation": "Python strips all assert statements when run with -O (optimized mode), silently disabling authorization checks. Always use an explicit if check that raises an exception for security and input validation."
+  },
+  {
     "id": "py-058",
     "lang": "python",
     "topic": "CTF toolbox",

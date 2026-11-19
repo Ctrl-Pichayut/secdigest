@@ -12,13 +12,11 @@ export const LANGS: Lang[] = ['python', 'c', 'js', 'java'];
 // Languages currently shown and scheduled; add 'c', 'js', or 'java' here to bring a language back.
 export const ACTIVE_LANGS: Lang[] = ['python'];
 
-// `emoji` is kept empty for compatibility with components/practice/exercises.tsx;
-// language icons are rendered via components/icons in components/practice/ui.tsx.
-export const LANG_META: Record<Lang, { label: string; short: string; emoji: string }> = {
-  python: { label: 'Python', short: 'PY', emoji: '' },
-  c: { label: 'C', short: 'C', emoji: '' },
-  js: { label: 'JavaScript', short: 'JS', emoji: '' },
-  java: { label: 'Java', short: 'JAVA', emoji: '' },
+export const LANG_META: Record<Lang, { label: string; short: string }> = {
+  python: { label: 'Python', short: 'PY' },
+  c: { label: 'C', short: 'C' },
+  js: { label: 'JavaScript', short: 'JS' },
+  java: { label: 'Java', short: 'JAVA' },
 };
 
 interface BaseCard {

@@ -3,8 +3,8 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { RotateCcw } from 'lucide-react';
-import { LANG_META, type BugCard, type CompareCard, type OrderCard, type OutputCard, type PracticeCard } from '@/lib/practice/types';
-import { ChoiceButton, CodeBlock, palette, type ChoiceState } from './ui';
+import type { BugCard, CompareCard, OrderCard, OutputCard, PracticeCard } from '@/lib/practice/types';
+import { ChoiceButton, CodeBlock, LangChip, palette, type ChoiceState } from './ui';
 
 /**
  * The four tap-only exercise types. Each one owns its answer state and calls
@@ -82,7 +82,7 @@ function CompareExercise({ card, isDusk, onAnswered }: ExerciseProps<CompareCard
             footer={
               picked !== null && (
                 <div className={`mt-1.5 text-[11px] font-bold ${i === card.answer || i === picked ? '' : p.muted}`}>
-                  {choice.lang ? `${LANG_META[choice.lang].emoji} ${LANG_META[choice.lang].label}` : 'Not valid in any of the four'}
+                  {choice.lang ? <LangChip lang={choice.lang} isDusk={isDusk} small /> : 'Not valid in any of the four'}
                 </div>
               )
             }

@@ -27,6 +27,11 @@ import {
   TrophyIcon,
   type IconComponent,
 } from '@/components/icons';
+import {
+  groupFeedItemsByDay,
+  getFeedFreshness,
+  type FeedDayGroup,
+} from '@/lib/feedDates';
 
 const FILTER_TABS: { id: FilterCategory; label: string; Icon: IconComponent }[] = [
   { id: 'ALL', label: 'All', Icon: SparkleIcon },
@@ -72,9 +77,57 @@ function getClientTimeInfo(now: Date): ClientTimeInfo {
   return { badge, Icon, subtitle, formattedDate };
 }
 
+interface FeedSectionHeaderProps {
+  group: FeedDayGroup<NewsItem>;
+  isDusk: boolean;
+  testIdPrefix: 'unread' | 'read';
+}
+
+function FeedSectionHeader({
+  group,
+  isDusk,
+  testIdPrefix,
+}: FeedSectionHeaderProps) {
+  const isBreaking = Boolean(group.isBreaking);
+  return (
+    <div
+      data-testid={`${testIdPrefix}-group-header-${group.key}`}
+      className="flex items-center gap-2.5 px-1"
+    >
+      <span
+        className={`inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider shrink-0 ${
+          isBreaking
+            ? isDusk
+              ? 'text-rose-300'
+              : 'text-rose-700'
+            : isDusk
+            ? 'text-[#B3ACC5]'
+            : 'text-[#5A544E]'
+        }`}
+      >
+        {isBreaking && <FlameIcon className="w-3 h-3 shrink-0" />}
+        <span>{group.label}</span>
+      </span>
+      <span
+        aria-hidden="true"
+        className={`h-px flex-1 ${
+          isBreaking
+            ? isDusk
+              ? 'bg-rose-900/70'
+              : 'bg-rose-300/80'
+            : isDusk
+            ? 'bg-[#342F46]'
+            : 'bg-[#D2C9B8]'
+        }`}
+      />
+    </div>
+  );
+}
+
 export default function HomePage() {
   const [items, setItems] = useState<NewsItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const [hasLoaded, setHasLoaded] = useState<boolean>(false);
   const [refreshing, setRefreshing] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<FilterCategory>('ALL');
@@ -90,13 +143,18 @@ export default function HomePage() {
     [allProgress]
   );
 
-  // Populate time-dependent greeting and date only after mount so prerendered
-  // HTML matches the initial client render and avoids React hydration error #418.
-  const [clientTime, setClientTime] = useState<ClientTimeInfo | null>(null);
+  // Populate time-dependent greeting, date, day headers, and freshness only after
+  // mount so prerendered HTML matches the initial client render (avoids hydration #418).
+  const [now, setNow] = useState<Date | null>(null);
 
   useEffect(() => {
-    setClientTime(getClientTimeInfo(new Date()));
+    setNow(new Date());
   }, []);
+
+  const clientTime = useMemo(
+    () => (now ? getClientTimeInfo(now) : null),
+    [now]
+  );
 
   // Load news items from Supabase
   const loadNews = useCallback(async (isRefresh = false) => {
@@ -121,8 +179,10 @@ export default function HomePage() {
       const message = err instanceof Error ? err.message : 'Unknown error';
       setError(`Failed to load intelligence feed: ${message}`);
     } finally {
+      setNow(new Date());
       setLoading(false);
       setRefreshing(false);
+      setHasLoaded(true);
     }
   }, []);
 
@@ -225,6 +285,24 @@ export default function HomePage() {
   const unreadItems = useMemo(() => filteredItems.filter((i) => !i.is_read), [filteredItems]);
   const readItems = useMemo(() => filteredItems.filter((i) => i.is_read), [filteredItems]);
 
+  const unreadGroups = useMemo(
+    () =>
+      !loading && now
+        ? groupFeedItemsByDay(unreadItems, now, { separateBreaking: true })
+        : [],
+    [unreadItems, now, loading]
+  );
+
+  const readGroups = useMemo(
+    () => (!loading && now ? groupFeedItemsByDay(readItems, now) : []),
+    [readItems, now, loading]
+  );
+
+  const freshness = useMemo(
+    () => (!loading && now ? getFeedFreshness(items, now) : null),
+    [items, now, loading]
+  );
+
   const unreadCount = useMemo(() => {
     return items.filter((item) => !item.is_read).length;
   }, [items]);
@@ -232,6 +310,8 @@ export default function HomePage() {
   const totalCount = items.length;
   const totalReadCount = totalCount - unreadCount;
   const percentRead = totalCount > 0 ? Math.round((totalReadCount / totalCount) * 100) : 0;
+  const isProgressLoading = !hasLoaded || (loading && totalCount === 0);
+  const isAllCaughtUp = hasLoaded && !loading && totalCount > 0 && unreadCount === 0;
   const GreetingIcon = clientTime ? clientTime.Icon : BoltIcon;
 
   return (
@@ -351,15 +431,33 @@ export default function HomePage() {
             </div>
           </div>
 
-          <p
-            className={`text-xs font-medium mb-3 pl-1 min-h-4 ${
-              isDusk ? 'text-[#B3ACC5]' : 'text-[#5A544E]'
-            }`}
-          >
-            {clientTime
-              ? `${clientTime.formattedDate} • ${clientTime.subtitle}`
-              : DEFAULT_SUBTITLE}
-          </p>
+          <div className="mb-3 pl-1 space-y-0.5">
+            <p
+              className={`text-xs font-medium min-h-4 ${
+                isDusk ? 'text-[#B3ACC5]' : 'text-[#5A544E]'
+              }`}
+            >
+              {clientTime
+                ? `${clientTime.formattedDate} • ${clientTime.subtitle}`
+                : DEFAULT_SUBTITLE}
+            </p>
+            {freshness && (
+              <p
+                data-testid="feed-freshness"
+                className={`text-[11px] leading-4 ${
+                  freshness.isStale
+                    ? isDusk
+                      ? 'text-amber-300 font-semibold'
+                      : 'text-amber-800 font-semibold'
+                    : isDusk
+                    ? 'text-[#B3ACC5] font-medium'
+                    : 'text-[#6A635C] font-medium'
+                }`}
+              >
+                {freshness.text}
+              </p>
+            )}
+          </div>
 
           {/* Interactive Daily Progress Bar */}
           <div
@@ -369,45 +467,88 @@ export default function HomePage() {
                 : 'bg-[#EDE8DF] border-[#D8D0C0] text-[#2A2623]'
             }`}
           >
-            <div className="flex items-center justify-between text-xs font-bold">
-              <span data-testid="progress-text" className="inline-flex items-center gap-1.5">
-                <span>
-                  {totalCount > 0 && totalReadCount === totalCount
-                    ? `All ${totalCount} posts caught up today!`
-                    : `${totalReadCount} of ${totalCount} posts caught up today`}
-                </span>
-                <PartyIcon className="w-3.5 h-3.5 shrink-0" />
-              </span>
-              <span
-                data-testid="unread-counter"
-                className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${
-                  unreadCount > 0
-                    ? isDusk
-                      ? 'bg-rose-950/70 text-rose-200 border-rose-700/60'
-                      : 'bg-rose-200/90 text-rose-950 border-rose-300'
-                    : isDusk
-                    ? 'bg-emerald-950/70 text-emerald-200 border-emerald-700/60'
-                    : 'bg-emerald-200/90 text-emerald-950 border-emerald-300'
-                }`}
+            {isProgressLoading ? (
+              <div
+                data-testid="progress-skeleton"
+                aria-busy="true"
+                aria-label="Loading daily progress"
+                className="space-y-2 animate-pulse"
               >
-                {unreadCount > 0 ? `${unreadCount} unread` : 'All caught up'}
-              </span>
-            </div>
+                <div className="flex items-center justify-between min-h-[22px]">
+                  <div
+                    className={`h-3.5 w-44 rounded-md ${
+                      isDusk ? 'bg-[#3E3852]' : 'bg-[#DCD5C9]'
+                    }`}
+                  />
+                  <div
+                    className={`h-[22px] w-20 rounded-full ${
+                      isDusk ? 'bg-[#3E3852]' : 'bg-[#DCD5C9]'
+                    }`}
+                  />
+                </div>
+                <div
+                  className={`w-full rounded-full h-2 border ${
+                    isDusk ? 'bg-[#1E1B29] border-[#342F46]' : 'bg-[#DCD5C9] border-[#CEC5B4]'
+                  }`}
+                />
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center justify-between min-h-[22px] text-xs font-bold">
+                  <span data-testid="progress-text" className="inline-flex items-center gap-1.5">
+                    <span>
+                      {isAllCaughtUp
+                        ? `All ${totalCount} posts caught up today!`
+                        : totalCount === 0
+                        ? error
+                          ? "Unable to load today's progress"
+                          : 'No posts in the feed yet'
+                        : `${totalReadCount} of ${totalCount} posts caught up today`}
+                    </span>
+                    {isAllCaughtUp && <PartyIcon className="w-3.5 h-3.5 shrink-0" />}
+                  </span>
+                  <span
+                    data-testid="unread-counter"
+                    className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${
+                      unreadCount > 0
+                        ? isDusk
+                          ? 'bg-rose-950/70 text-rose-200 border-rose-700/60'
+                          : 'bg-rose-200/90 text-rose-950 border-rose-300'
+                        : isAllCaughtUp
+                        ? isDusk
+                          ? 'bg-emerald-950/70 text-emerald-200 border-emerald-700/60'
+                          : 'bg-emerald-200/90 text-emerald-950 border-emerald-300'
+                        : isDusk
+                        ? 'bg-[#1E1B29] text-[#B3ACC5] border-[#3E3852]'
+                        : 'bg-[#E5DFD3] text-[#5A544E] border-[#D2C9B8]'
+                    }`}
+                  >
+                    {unreadCount > 0
+                      ? `${unreadCount} unread`
+                      : isAllCaughtUp
+                      ? 'All caught up'
+                      : error
+                      ? 'Offline'
+                      : '0 posts'}
+                  </span>
+                </div>
 
-            {/* Animated gradient bar */}
-            <div
-              className={`w-full rounded-full h-2 overflow-hidden border ${
-                isDusk ? 'bg-[#1E1B29] border-[#342F46]' : 'bg-[#DCD5C9] border-[#CEC5B4]'
-              }`}
-            >
-              <motion.div
-                data-testid="progress-bar-fill"
-                className="h-full bg-gradient-to-r from-amber-400 via-rose-400 to-violet-500 rounded-full"
-                initial={false}
-                animate={{ width: `${percentRead}%` }}
-                transition={{ duration: 0.35, ease: 'easeOut' }}
-              />
-            </div>
+                {/* Animated gradient bar */}
+                <div
+                  className={`w-full rounded-full h-2 overflow-hidden border ${
+                    isDusk ? 'bg-[#1E1B29] border-[#342F46]' : 'bg-[#DCD5C9] border-[#CEC5B4]'
+                  }`}
+                >
+                  <motion.div
+                    data-testid="progress-bar-fill"
+                    className="h-full bg-gradient-to-r from-amber-400 via-rose-400 to-violet-500 rounded-full"
+                    initial={false}
+                    animate={{ width: `${percentRead}%` }}
+                    transition={{ duration: 0.35, ease: 'easeOut' }}
+                  />
+                </div>
+              </>
+            )}
           </div>
         </header>
 
@@ -612,23 +753,40 @@ export default function HomePage() {
         {/* Unread News Cards with Framer Motion Layout Animation */}
         {!loading && (
           <AnimatePresence mode="popLayout">
-            {unreadItems.map((item) => (
+            {unreadGroups.flatMap((group, groupIdx) => [
               <motion.div
-                key={item.id}
+                key={`unread-header-${group.key}`}
                 layout
-                initial={{ opacity: 0, y: 14 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.96 }}
-                transition={{ duration: 0.25, ease: 'easeOut' }}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                className={groupIdx > 0 ? 'pt-2.5' : undefined}
               >
-                <NewsCard
-                  item={item}
-                  onToggleBookmark={handleToggleBookmark}
-                  onToggleRead={handleToggleRead}
-                  theme={theme}
+                <FeedSectionHeader
+                  group={group}
+                  isDusk={isDusk}
+                  testIdPrefix="unread"
                 />
-              </motion.div>
-            ))}
+              </motion.div>,
+              ...group.items.map((item) => (
+                <motion.div
+                  key={item.id}
+                  layout
+                  initial={{ opacity: 0, y: 14 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.96 }}
+                  transition={{ duration: 0.25, ease: 'easeOut' }}
+                >
+                  <NewsCard
+                    item={item}
+                    onToggleBookmark={handleToggleBookmark}
+                    onToggleRead={handleToggleRead}
+                    theme={theme}
+                  />
+                </motion.div>
+              )),
+            ])}
           </AnimatePresence>
         )}
 
@@ -684,23 +842,40 @@ export default function HomePage() {
                   transition={{ duration: 0.28, ease: 'easeInOut' }}
                   className="space-y-3.5 pt-3 overflow-hidden"
                 >
-                  {readItems.map((item) => (
+                  {readGroups.flatMap((group, groupIdx) => [
                     <motion.div
-                      key={item.id}
+                      key={`read-header-${group.key}`}
                       layout
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, scale: 0.96 }}
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
                       transition={{ duration: 0.2 }}
+                      className={groupIdx > 0 ? 'pt-2.5' : undefined}
                     >
-                      <NewsCard
-                        item={item}
-                        onToggleBookmark={handleToggleBookmark}
-                        onToggleRead={handleToggleRead}
-                        theme={theme}
+                      <FeedSectionHeader
+                        group={group}
+                        isDusk={isDusk}
+                        testIdPrefix="read"
                       />
-                    </motion.div>
-                  ))}
+                    </motion.div>,
+                    ...group.items.map((item) => (
+                      <motion.div
+                        key={item.id}
+                        layout
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.96 }}
+                        transition={{ duration: 0.2 }}
+                      >
+                        <NewsCard
+                          item={item}
+                          onToggleBookmark={handleToggleBookmark}
+                          onToggleRead={handleToggleRead}
+                          theme={theme}
+                        />
+                      </motion.div>
+                    )),
+                  ])}
                 </motion.div>
               )}
             </AnimatePresence>
