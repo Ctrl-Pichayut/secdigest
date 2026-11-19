@@ -13,7 +13,7 @@ Single-user daily cybersecurity and tech digest Progressive Web App (PWA). Built
 ```text
 GitHub Actions daily cron (20:30 UTC / 03:30 UTC+7, .github/workflows/daily_digest.yml)
   -> scripts/fetch_news.py
-     -> fetch 5 sources + deduplicate against public.seen_sources & public.news_items
+     -> fetch 6 sources + deduplicate against public.seen_sources & public.news_items
      -> Gemini structured-output fallback chain (google-genai):
         gemini-3.8-flash -> gemini-3.7-flash -> gemini-3.6-flash -> gemini-2.5-flash
      -> upsert into Supabase PostgreSQL (public.news_items, then public.seen_sources)
@@ -26,13 +26,24 @@ Gemini 3.x models use `thinking_level="low"`; the `gemini-2.5-flash` fallback om
 
 ## Digest Sources and Breaking-News Rule
 
-`scripts/fetch_news.py` collects candidates from five sources:
+`scripts/fetch_news.py` collects candidates from six sources:
 
 1. **CISA KEV**: Known Exploited Vulnerabilities added in the last 7 days (`CVE_SECURITY`).
 2. **OpenRouter Free Models**: Models whose ID ends with `:free` (`AI_FREE`).
 3. **Hacker News**: Top 30 stories by points from the Algolia API in the last 36 hours with more than 50 points (`CVE_SECURITY` or `DEV_CLOUD`).
 4. **Official Status Pages**: Major/critical incidents from Anthropic, OpenAI, GitHub, and Cloudflare, plus high-severity incidents from Google Cloud, created in the last 36 hours (`DEV_CLOUD`).
 5. **CTFtime**: Upcoming CTF events. Runs on Mondays and Fridays (UTC), or any day with `--force-ctf` (`CTF_COMPETITION`).
+6. **Primary-Source RSS/Atom Feeds**: Up to 5 newest items per feed (30 total, newest first) published in the last 36 hours across 10 public feeds:
+   - **OpenAI News** (`https://openai.com/news/rss.xml`, `DEV_CLOUD`)
+   - **Google DeepMind Blog** (`https://deepmind.google/blog/rss.xml`, `DEV_CLOUD`)
+   - **Google AI Blog** (`https://blog.google/technology/ai/rss/`, `DEV_CLOUD`)
+   - **GitHub Changelog** (`https://github.blog/changelog/feed/`, `DEV_CLOUD`)
+   - **AWS Security Bulletins** (`https://aws.amazon.com/security/security-bulletins/rss/feed/`, `CVE_SECURITY`)
+   - **Cloudflare Blog** (`https://blog.cloudflare.com/rss/`, `DEV_CLOUD`)
+   - **BleepingComputer** (`https://www.bleepingcomputer.com/feed/`, `CVE_SECURITY`)
+   - **The Hacker News** (`https://feeds.feedburner.com/TheHackersNews`, `CVE_SECURITY`)
+   - **Krebs on Security** (`https://krebsonsecurity.com/feed/`, `CVE_SECURITY`)
+   - **ThaiCERT** (`https://www.thaicert.or.th/feed/`, `CVE_SECURITY`)
 
 **Breaking-news rule**: Each run keeps up to 5 normal (`is_breaking=false`) items plus every breaking (`is_breaking=true`) item, capped at 8 items total (with breaking items ordered first, and at most 2 non-breaking `CVE_SECURITY` items per run). Breaking items are reserved for major global outages, actively exploited mass-impact vulnerabilities, or flagship launches from major AI vendors. In the feed, unread breaking items appear in a `Breaking` group at the top.
 

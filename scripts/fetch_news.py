@@ -2,12 +2,13 @@
 """
 Personal CyberSec & Tech Digest Ingestion Pipeline.
 
-Fetches intelligence from 5 sources:
+Fetches intelligence from 6 sources:
 1. CISA Known Exploited Vulnerabilities (KEV) Catalog (last 7 days)
 2. OpenRouter Models API (models ending with :free)
 3. Hacker News Algolia API (>50 points, last 36h, top 30 by points)
 4. Official Status Pages (Anthropic, OpenAI, GitHub, Cloudflare, Google Cloud; major/critical/high in last 36h)
 5. CTFtime API (upcoming events; runs Mondays and Fridays, or with --force-ctf)
+6. Primary-Source RSS/Atom Feeds (10 vendor blogs, security news sites, and ThaiCERT; last 36h, <=5/feed, <=30 total)
 
 Deduplicates against existing items in Supabase public.news_items, curates up to 5 normal
 items plus breaking items (at most 8 total) using Gemini (via google-genai SDK with
@@ -16,13 +17,18 @@ Structured Outputs), and upserts them into Supabase.
 
 import argparse
 from datetime import datetime, timezone, timedelta
+from email.utils import parsedate_to_datetime
 from enum import Enum
+import hashlib
+import html
+import io
 import json
 import logging
 import os
 import re
 import sys
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, Tuple
+import xml.etree.ElementTree as ET
 
 from dotenv import load_dotenv
 from google import genai
@@ -61,7 +67,7 @@ class TechTerm(BaseModel):
 
 class CuratedNewsItem(BaseModel):
     source_id: str = Field(
-        description="Exact unique source_id from input (e.g. cisa_CVE-..., openrouter_..., hn_..., status_..., ctftime_...)."
+        description="Exact unique source_id from input (e.g. cisa_CVE-..., openrouter_..., hn_..., status_..., ctftime_..., rss_...)."
     )
     category: CategoryEnum = Field(
         description="Allowed category: AI_FREE, CVE_SECURITY, CTF_COMPETITION, or DEV_CLOUD."
@@ -116,6 +122,7 @@ SOURCE_ORDER = (
     "hacker_news",
     "status_pages",
     "ctftime",
+    "rss",
 )
 
 # Per-source error details recorded during the current run (source_name -> detail).
@@ -551,6 +558,393 @@ def fetch_ctftime(force_ctf: bool = False) -> List[Dict[str, Any]]:
     return items
 
 
+RSS_USER_AGENT = "SecDigestBot/1.0 (+https://secdigest.vercel.app)"
+RSS_MAX_BYTES = 5 * 1024 * 1024  # 5 MB response cap
+RSS_PER_FEED_CAP = 5
+RSS_TOTAL_CAP = 30
+
+RSS_FEEDS: List[Dict[str, str]] = [
+    {
+        "slug": "openai",
+        "name": "OpenAI News",
+        "url": "https://openai.com/news/rss.xml",
+        "category": "DEV_CLOUD",
+    },
+    {
+        "slug": "google_deepmind",
+        "name": "Google DeepMind Blog",
+        "url": "https://deepmind.google/blog/rss.xml",
+        "category": "DEV_CLOUD",
+    },
+    {
+        "slug": "google_ai",
+        "name": "Google AI Blog",
+        "url": "https://blog.google/technology/ai/rss/",
+        "category": "DEV_CLOUD",
+    },
+    {
+        "slug": "github_changelog",
+        "name": "GitHub Changelog",
+        "url": "https://github.blog/changelog/feed/",
+        "category": "DEV_CLOUD",
+    },
+    {
+        "slug": "aws_security",
+        "name": "AWS Security Bulletins",
+        "url": "https://aws.amazon.com/security/security-bulletins/rss/feed/",
+        "category": "CVE_SECURITY",
+    },
+    {
+        "slug": "cloudflare",
+        "name": "Cloudflare Blog",
+        "url": "https://blog.cloudflare.com/rss/",
+        "category": "DEV_CLOUD",
+    },
+    {
+        "slug": "bleepingcomputer",
+        "name": "BleepingComputer",
+        "url": "https://www.bleepingcomputer.com/feed/",
+        "category": "CVE_SECURITY",
+    },
+    {
+        "slug": "thehackernews",
+        "name": "The Hacker News",
+        "url": "https://feeds.feedburner.com/TheHackersNews",
+        "category": "CVE_SECURITY",
+    },
+    {
+        "slug": "krebs",
+        "name": "Krebs on Security",
+        "url": "https://krebsonsecurity.com/feed/",
+        "category": "CVE_SECURITY",
+    },
+    {
+        "slug": "thaicert",
+        "name": "ThaiCERT",
+        "url": "https://www.thaicert.or.th/feed/",
+        "category": "CVE_SECURITY",
+    },
+]
+
+_SCRIPT_STYLE_RE = re.compile(r"<(script|style)\b[^>]*>.*?</\1>", re.IGNORECASE | re.DOTALL)
+_HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
+_BLOCK_TAG_RE = re.compile(
+    r"</?(?:p|div|br|li|ul|ol|tr|td|th|h[1-6]|blockquote|pre|hr|section|article|header|footer)\b[^>]*>",
+    re.IGNORECASE,
+)
+_ANY_TAG_RE = re.compile(r"<[^>]+>")
+
+
+def _xml_local_name(tag: str) -> str:
+    """Return the local tag name with any XML namespace URI stripped."""
+    if "}" in tag:
+        return tag.rsplit("}", 1)[1]
+    return tag
+
+
+def _element_raw_text(elem: ET.Element) -> str:
+    """Return raw text or serialized inner markup for an XML element."""
+    if len(elem):
+        return ET.tostring(elem, encoding="unicode")
+    return elem.text or ""
+
+
+def _strip_html_and_collapse(raw: Optional[str]) -> str:
+    """Strip HTML tags, unescape HTML entities, and collapse whitespace."""
+    if not raw or not isinstance(raw, str):
+        return ""
+    text = _SCRIPT_STYLE_RE.sub(" ", raw)
+    text = _HTML_COMMENT_RE.sub(" ", text)
+    text = _BLOCK_TAG_RE.sub(" ", text)
+    text = _ANY_TAG_RE.sub("", text)
+    text = html.unescape(text)
+    return " ".join(text.split())
+
+
+def _parse_feed_datetime(raw: Optional[str]) -> Optional[datetime]:
+    """Parse an RFC 2822 (RSS) or ISO 8601 (Atom / dc:date) timestamp into UTC."""
+    if not raw or not isinstance(raw, str):
+        return None
+    text = " ".join(raw.split())
+    if not text:
+        return None
+
+    iso_dt = _parse_iso_utc(text)
+    if iso_dt is not None:
+        return iso_dt
+
+    try:
+        dt = parsedate_to_datetime(text)
+    except (TypeError, ValueError, IndexError, OverflowError):
+        return None
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def _download_feed_bytes(url: str) -> bytes:
+    """Download an RSS/Atom feed with timeout and RSS_MAX_BYTES size guard."""
+    headers = {
+        "User-Agent": RSS_USER_AGENT,
+        "Accept": "application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9, */*;q=0.8",
+    }
+    resp = requests.get(url, headers=headers, timeout=15, stream=True)
+    try:
+        resp.raise_for_status()
+        content_length = None
+        if hasattr(resp, "headers") and resp.headers:
+            for header_key, header_val in resp.headers.items():
+                if str(header_key).lower() == "content-length":
+                    content_length = header_val
+                    break
+        if content_length is not None:
+            try:
+                declared_size = int(str(content_length).strip())
+            except ValueError:
+                declared_size = None
+            if declared_size is not None and declared_size > RSS_MAX_BYTES:
+                raise ValueError(
+                    f"Feed response too large ({declared_size} bytes > {RSS_MAX_BYTES} byte limit)"
+                )
+
+        chunks: List[bytes] = []
+        total_bytes = 0
+        for chunk in resp.iter_content(chunk_size=65536):
+            if not chunk:
+                continue
+            if isinstance(chunk, str):
+                chunk = chunk.encode("utf-8")
+            total_bytes += len(chunk)
+            if total_bytes > RSS_MAX_BYTES:
+                raise ValueError(
+                    f"Feed response exceeded {RSS_MAX_BYTES} byte limit"
+                )
+            chunks.append(chunk)
+        return b"".join(chunks)
+    finally:
+        if hasattr(resp, "close"):
+            resp.close()
+
+
+def _extract_feed_entry(
+    elem: ET.Element,
+    is_atom: bool,
+    cutoff_dt: datetime,
+    feed_slug: str,
+    feed_name: str,
+    feed_category: str,
+) -> Optional[Tuple[datetime, Dict[str, Any]]]:
+    """
+    Extract a candidate item from a single RSS <item> or Atom <entry> element.
+    Returns (published_dt, item_dict) if valid and within cutoff_dt, else None.
+    """
+    # Check date first so out-of-window entries skip link, HTML, and hashing work.
+    date_candidates: Dict[str, str] = {}
+    for child in elem:
+        local = _xml_local_name(child.tag).lower()
+        if local in ("pubdate", "published", "updated", "date"):
+            if local not in date_candidates and child.text and child.text.strip():
+                date_candidates[local] = child.text.strip()
+
+    date_order = (
+        ("published", "updated", "date", "pubdate")
+        if is_atom
+        else ("pubdate", "date", "published", "updated")
+    )
+    pub_dt: Optional[datetime] = None
+    for key in date_order:
+        if key in date_candidates:
+            pub_dt = _parse_feed_datetime(date_candidates[key])
+            if pub_dt is not None:
+                break
+    if pub_dt is None or pub_dt < cutoff_dt:
+        return None
+
+    title_raw: Optional[str] = None
+    rss_text_link: Optional[str] = None
+    explicit_alt_link: Optional[str] = None
+    default_alt_link: Optional[str] = None
+    fallback_href_link: Optional[str] = None
+    atom_text_link: Optional[str] = None
+    summary_parts: Dict[str, str] = {}
+
+    for child in elem:
+        local = _xml_local_name(child.tag).lower()
+        if local == "link":
+            href = (child.attrib.get("href") or "").strip()
+            rel = (child.attrib.get("rel") or "").strip().lower()
+            text_val = (child.text or "").strip()
+            if href:
+                if rel == "alternate" and explicit_alt_link is None:
+                    explicit_alt_link = href
+                elif not rel and default_alt_link is None:
+                    default_alt_link = href
+                elif fallback_href_link is None:
+                    fallback_href_link = href
+            if text_val:
+                if not is_atom and rss_text_link is None:
+                    rss_text_link = text_val
+                elif is_atom and atom_text_link is None:
+                    atom_text_link = text_val
+        elif local == "title" and title_raw is None:
+            title_raw = _element_raw_text(child)
+        elif local in ("description", "encoded", "summary", "content"):
+            if local not in summary_parts:
+                raw_val = _element_raw_text(child)
+                if raw_val and raw_val.strip():
+                    summary_parts[local] = raw_val
+
+    if is_atom:
+        link = explicit_alt_link or default_alt_link or fallback_href_link or atom_text_link or ""
+    else:
+        link = rss_text_link or explicit_alt_link or default_alt_link or fallback_href_link or ""
+    if not link:
+        return None
+
+    title = _strip_html_and_collapse(title_raw) or link
+
+    summary_order = ("summary", "content") if is_atom else ("description", "encoded")
+    summary_text = ""
+    for key in summary_order:
+        if key in summary_parts:
+            cleaned = _strip_html_and_collapse(summary_parts[key])
+            if cleaned:
+                summary_text = cleaned
+                break
+
+    if len(summary_text) > 400:
+        summary_excerpt = summary_text[:397].rstrip() + "..."
+    else:
+        summary_excerpt = summary_text
+
+    published_iso = pub_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+    if summary_excerpt:
+        raw_context = (
+            f"Source: {feed_name} | Published: {published_iso}\n"
+            f"Summary: {summary_excerpt}"
+        )
+    else:
+        raw_context = f"Source: {feed_name} | Published: {published_iso}"
+
+    link_hash = hashlib.sha1(link.encode("utf-8")).hexdigest()[:12]
+    source_id = f"rss_{feed_slug}_{link_hash}"
+
+    return (
+        pub_dt,
+        {
+            "source_id": source_id,
+            "category": feed_category,
+            "title": title,
+            "url": link,
+            "raw_context": raw_context,
+            "event_start_date": None,
+        },
+    )
+
+
+def _parse_feed_bytes(
+    raw_bytes: bytes,
+    cutoff_dt: datetime,
+    feed_slug: str,
+    feed_name: str,
+    feed_category: str,
+) -> List[Tuple[datetime, Dict[str, Any]]]:
+    """Stream-parse RSS 2.0 or Atom XML bytes and return up to RSS_PER_FEED_CAP newest items."""
+    if raw_bytes.startswith(b"\xef\xbb\xbf"):
+        raw_bytes = raw_bytes[3:]
+    raw_bytes = raw_bytes.lstrip()
+    if not raw_bytes:
+        raise ValueError("Empty feed response")
+
+    root_checked = False
+    is_atom = False
+    target_tag = "item"
+    dated_items: List[Tuple[datetime, Dict[str, Any]]] = []
+    seen_ids: Set[str] = set()
+
+    for event, elem in ET.iterparse(io.BytesIO(raw_bytes), events=("start", "end")):
+        if not root_checked and event == "start":
+            root_local = _xml_local_name(elem.tag).lower()
+            if root_local == "feed":
+                is_atom = True
+                target_tag = "entry"
+            elif root_local in ("rss", "rdf"):
+                is_atom = False
+                target_tag = "item"
+            else:
+                raise ValueError(f"Unsupported feed root element <{elem.tag}>")
+            root_checked = True
+            continue
+
+        if event == "end" and _xml_local_name(elem.tag).lower() == target_tag:
+            extracted = _extract_feed_entry(
+                elem=elem,
+                is_atom=is_atom,
+                cutoff_dt=cutoff_dt,
+                feed_slug=feed_slug,
+                feed_name=feed_name,
+                feed_category=feed_category,
+            )
+            elem.clear()
+            if extracted is not None:
+                source_id = extracted[1]["source_id"]
+                if source_id not in seen_ids:
+                    seen_ids.add(source_id)
+                    dated_items.append(extracted)
+
+    dated_items.sort(key=lambda pair: pair[0], reverse=True)
+    return dated_items[:RSS_PER_FEED_CAP]
+
+
+def fetch_rss_feeds() -> List[Dict[str, Any]]:
+    """
+    Fetch recent items (last 36 hours) from configured primary-source RSS/Atom feeds.
+    Keeps at most 5 newest items per feed and at most 30 newest items overall.
+    """
+    SOURCE_ERRORS.pop("rss", None)
+    cutoff_dt = datetime.now(timezone.utc) - timedelta(hours=36)
+    all_dated_items: List[Tuple[datetime, Dict[str, Any]]] = []
+    feed_errors: List[str] = []
+    succeeded_feeds = 0
+
+    for feed in RSS_FEEDS:
+        slug = feed["slug"]
+        name = feed["name"]
+        url = feed["url"]
+        category = feed["category"]
+        try:
+            raw_bytes = _download_feed_bytes(url)
+            feed_items = _parse_feed_bytes(
+                raw_bytes=raw_bytes,
+                cutoff_dt=cutoff_dt,
+                feed_slug=slug,
+                feed_name=name,
+                feed_category=category,
+            )
+            succeeded_feeds += 1
+            all_dated_items.extend(feed_items)
+            logger.info("RSS [%s]: Fetched %d items in last 36h.", name, len(feed_items))
+        except Exception as e:
+            feed_errors.append(f"{name}: {e}")
+            logger.error("Failed to fetch RSS feed %s (%s): %s", name, slug, e)
+
+    if feed_errors:
+        SOURCE_ERRORS["rss"] = "; ".join(feed_errors)
+
+    all_dated_items.sort(key=lambda pair: pair[0], reverse=True)
+    items = [item for _, item in all_dated_items[:RSS_TOTAL_CAP]]
+
+    logger.info(
+        "RSS: Fetched %d items from %d/%d feeds in last 36h.",
+        len(items),
+        succeeded_feeds,
+        len(RSS_FEEDS),
+    )
+    return items
+
+
 # ---------------------------------------------------------------------------
 # Deduplication & Database Operations
 # ---------------------------------------------------------------------------
@@ -741,7 +1135,7 @@ def curate_with_gemini(
     prompt = f"""You are the intelligence curator for a personal daily CyberSec & Tech digest web application.
 The target audience is a 2nd-year Computer Science student specializing in Cybersecurity, Cloud Security, CTFs, and AI/Developer Tools.
 
-Below is a feed of raw candidate items fetched today from CISA KEV, OpenRouter (free models), Hacker News front-page stories (any topic), official status pages (Anthropic, OpenAI, GitHub, Cloudflare, Google Cloud), and CTFtime.
+Below is a feed of raw candidate items fetched today from CISA KEV, OpenRouter (free models), Hacker News front-page stories (any topic), official status pages (Anthropic, OpenAI, GitHub, Cloudflare, Google Cloud), official vendor blogs and release notes, security news sites (BleepingComputer, The Hacker News, Krebs) and ThaiCERT advisories, and CTFtime.
 
 YOUR OBJECTIVES:
 1. Select at most 5 normal (is_breaking=false) highest-impact items, PLUS every breaking (is_breaking=true) item, up to 8 items TOTAL for the day.
@@ -761,6 +1155,7 @@ YOUR OBJECTIVES:
 3. CONSOLIDATE RELATED RELEASES (VENDOR & PRODUCT DEDUPLICATION):
    - If multiple CVEs affect the same vendor/product (e.g., multiple AhsayCBS or Ivanti CVEs released in the same catalog batch), pick ONLY the single most impactful entry and mention the related CVE IDs or variants inside its tldr rather than creating separate cards.
    - If a vendor releases multiple AI model variants simultaneously (e.g., multiple Poolside Laguna variants or multiple Google Gemma 4 sizes), select ONLY the single most relevant variant for developers, and mention the other variants/sizes concisely within its tldr.
+   - Several sources may report the SAME story (e.g., a Hacker News link, a security news article, and an official vendor blog post or advisory covering one launch or vulnerability). Pick ONLY the single most primary source (the vendor's own post or official advisory) and mention the other sources concisely inside its tldr only if useful.
 
 4. For each selected item:
    - source_id: MUST PRESERVE the exact source_id from input without modification.
@@ -1077,7 +1472,7 @@ def main() -> None:
     }
 
     try:
-        # 1. Fetch from all 5 sources
+        # 1. Fetch from all 6 sources
         logger.info("=== Starting Data Collection ===")
         cisa_items = fetch_cisa_kev()
         report["source_counts"]["cisa_kev"] = len(cisa_items)
@@ -1095,12 +1490,16 @@ def main() -> None:
         ctftime_items = fetch_ctftime(force_ctf=args.force_ctf)
         report["source_counts"]["ctftime"] = "skipped" if ctftime_skipped else len(ctftime_items)
 
+        rss_items = fetch_rss_feeds()
+        report["source_counts"]["rss"] = len(rss_items)
+
         candidates: List[Dict[str, Any]] = [
             *cisa_items,
             *openrouter_items,
             *hn_items,
             *status_items,
             *ctftime_items,
+            *rss_items,
         ]
 
         logger.info("=== Total Candidate Items Collected: %d ===", len(candidates))
@@ -1112,7 +1511,7 @@ def main() -> None:
             print(
                 f"cisa_kev: {len(cisa_items)} | openrouter: {len(openrouter_items)} "
                 f"| hacker_news: {len(hn_items)} | status_pages: {len(status_items)} "
-                f"| ctftime: {ctftime_display}"
+                f"| ctftime: {ctftime_display} | rss: {len(rss_items)}"
             )
             print("\n--- DRY RUN CANDIDATE SUMMARY ---")
             for i, item in enumerate(candidates, 1):

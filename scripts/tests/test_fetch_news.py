@@ -1,7 +1,10 @@
 """Unit tests for scripts/fetch_news.py using the Python standard library only."""
 
-from contextlib import ExitStack
+from contextlib import ExitStack, redirect_stdout
 from datetime import datetime, timedelta, timezone
+from email.utils import format_datetime
+import hashlib
+import io
 import json
 import os
 from pathlib import Path
@@ -25,6 +28,22 @@ def _make_response(payload, status_error=None):
     else:
         resp.raise_for_status.return_value = None
     resp.json.return_value = payload
+    return resp
+
+
+def _make_rss_response(body=b"", headers=None, status_error=None, chunks=None):
+    """Build a mock streaming requests.Response returning XML bytes."""
+    resp = mock.MagicMock()
+    if status_error is not None:
+        resp.raise_for_status.side_effect = status_error
+    else:
+        resp.raise_for_status.return_value = None
+    resp.headers = dict(headers) if headers is not None else {}
+    if chunks is not None:
+        resp.iter_content.return_value = iter(chunks)
+    else:
+        raw = body.encode("utf-8") if isinstance(body, str) else body
+        resp.iter_content.return_value = iter([raw] if raw else [])
     return resp
 
 
@@ -1030,6 +1049,7 @@ class TestMain(unittest.TestCase):
             mock.patch("fetch_news.fetch_status_incidents", return_value=[])
         )
         stack.enter_context(mock.patch("fetch_news.fetch_ctftime", return_value=[]))
+        stack.enter_context(mock.patch("fetch_news.fetch_rss_feeds", return_value=[]))
 
         fake_supabase = mock.MagicMock(name="supabase_client")
         stack.enter_context(
@@ -1213,6 +1233,7 @@ class TestRunReportAndExitCodes(unittest.TestCase):
                 mock.patch("fetch_news.fetch_status_incidents", return_value=[])
             )
             stack.enter_context(mock.patch("fetch_news.fetch_ctftime", return_value=[]))
+            stack.enter_context(mock.patch("fetch_news.fetch_rss_feeds", return_value=[]))
 
             fake_supabase = mock.MagicMock(name="supabase_client")
             stack.enter_context(
@@ -1261,6 +1282,7 @@ class TestRunReportAndExitCodes(unittest.TestCase):
             self.assertIn("| hacker_news | 1 | ok |", content)
             self.assertIn("| status_pages | 0 | ok |", content)
             self.assertIn("| ctftime | skipped | skipped |", content)
+            self.assertIn("| rss | 0 | ok |", content)
             self.assertIn("- Status: ok", content)
             self.assertIn("- Failed sources: none", content)
             self.assertIn("- Unseen candidates: 3", content)
@@ -1315,6 +1337,7 @@ class TestRunReportAndExitCodes(unittest.TestCase):
                 mock.patch("fetch_news.fetch_status_incidents", return_value=[])
             )
             stack.enter_context(mock.patch("fetch_news.fetch_ctftime", return_value=[]))
+            stack.enter_context(mock.patch("fetch_news.fetch_rss_feeds", return_value=[]))
             stack.enter_context(mock.patch("fetch_news.create_client"))
             stack.enter_context(
                 mock.patch("fetch_news.get_existing_source_ids", return_value=set())
@@ -1376,6 +1399,7 @@ class TestRunReportAndExitCodes(unittest.TestCase):
                 mock.patch("fetch_news.fetch_status_incidents", return_value=[])
             )
             stack.enter_context(mock.patch("fetch_news.fetch_ctftime", return_value=[]))
+            stack.enter_context(mock.patch("fetch_news.fetch_rss_feeds", return_value=[]))
             stack.enter_context(mock.patch("fetch_news.create_client"))
             stack.enter_context(
                 mock.patch("fetch_news.get_existing_source_ids", return_value=set())
@@ -1439,6 +1463,7 @@ class TestRunReportAndExitCodes(unittest.TestCase):
                 mock.patch("fetch_news.fetch_status_incidents", return_value=[])
             )
             stack.enter_context(mock.patch("fetch_news.fetch_ctftime", return_value=[]))
+            stack.enter_context(mock.patch("fetch_news.fetch_rss_feeds", return_value=[]))
             mock_create_client = stack.enter_context(
                 mock.patch("fetch_news.create_client")
             )
@@ -1462,6 +1487,7 @@ class TestRunReportAndExitCodes(unittest.TestCase):
             self.assertIn("| hacker_news | 0 | ok |", content)
             self.assertIn("| status_pages | 0 | ok |", content)
             self.assertIn("| ctftime | skipped | skipped |", content)
+            self.assertIn("| rss | 0 | ok |", content)
             self.assertIn("- Failed sources: cisa_kev", content)
             self.assertIn(
                 "- Status: failed (all sources returned zero candidates)", content
@@ -1504,6 +1530,7 @@ class TestRunReportAndExitCodes(unittest.TestCase):
                 mock.patch("fetch_news.fetch_status_incidents", return_value=[])
             )
             stack.enter_context(mock.patch("fetch_news.fetch_ctftime", return_value=[]))
+            stack.enter_context(mock.patch("fetch_news.fetch_rss_feeds", return_value=[]))
             stack.enter_context(mock.patch("fetch_news.create_client"))
             stack.enter_context(
                 mock.patch("fetch_news.get_existing_source_ids", return_value=set())
@@ -1566,6 +1593,7 @@ class TestRunReportAndExitCodes(unittest.TestCase):
                 mock.patch("fetch_news.fetch_status_incidents", return_value=[])
             )
             stack.enter_context(mock.patch("fetch_news.fetch_ctftime", return_value=[]))
+            stack.enter_context(mock.patch("fetch_news.fetch_rss_feeds", return_value=[]))
             stack.enter_context(mock.patch("fetch_news.create_client"))
             stack.enter_context(
                 mock.patch("fetch_news.get_existing_source_ids", return_value=set())
@@ -1607,6 +1635,656 @@ class TestRunReportAndExitCodes(unittest.TestCase):
                     client, "prompt", fetch_news.CuratedDigestResponse
                 )
         self.assertIsNone(fetch_news.LAST_GEMINI_MODEL)
+
+
+class TestFetchRssFeeds(unittest.TestCase):
+    """Tests for fetch_rss_feeds and RSS integration in main()."""
+
+    @staticmethod
+    def _rss_doc(items_xml):
+        return (
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<rss version="2.0" '
+            'xmlns:dc="http://purl.org/dc/elements/1.1/" '
+            'xmlns:content="http://purl.org/rss/1.0/modules/content/">\n'
+            "  <channel>\n"
+            "    <title>Test RSS Channel</title>\n"
+            f"    {items_xml}\n"
+            "  </channel>\n"
+            "</rss>\n"
+        )
+
+    @staticmethod
+    def _atom_doc(entries_xml):
+        return (
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<feed xmlns="http://www.w3.org/2005/Atom">\n'
+            "  <title>Test Atom Feed</title>\n"
+            f"  {entries_xml}\n"
+            "</feed>\n"
+        )
+
+    def test_rss_feeds_config_has_10_feeds_and_db_allowed_categories(self):
+        allowed = {"AI_FREE", "CVE_SECURITY", "CTF_COMPETITION", "DEV_CLOUD"}
+        self.assertEqual(len(fetch_news.RSS_FEEDS), 10)
+        slugs = [f["slug"] for f in fetch_news.RSS_FEEDS]
+        self.assertEqual(len(slugs), len(set(slugs)))
+        for feed in fetch_news.RSS_FEEDS:
+            self.assertTrue(feed["slug"])
+            self.assertTrue(feed["name"])
+            self.assertTrue(feed["url"].startswith("https://"))
+            self.assertIn(feed["category"], allowed)
+
+    @mock.patch("fetch_news.requests.get")
+    def test_parses_rss2_and_atom_with_namespaces_dc_date_and_alternate_link(
+        self, mock_get
+    ):
+        now = datetime.now(timezone.utc)
+        t1 = format_datetime(now - timedelta(hours=1), usegmt=True)
+        t2 = (now - timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        t3 = (now - timedelta(hours=3)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        t4 = (now - timedelta(hours=4)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        rss_xml = self._rss_doc(
+            f"""
+            <item>
+              <title>RSS Standard Entry</title>
+              <link>https://vendor.example/rss-1</link>
+              <pubDate>{t1}</pubDate>
+              <description>Plain RSS summary.</description>
+            </item>
+            <item>
+              <title>RSS Namespaced Entry</title>
+              <link>https://vendor.example/rss-2</link>
+              <dc:date>{t2}</dc:date>
+              <content:encoded><![CDATA[<p>Body from content:encoded.</p>]]></content:encoded>
+            </item>
+            <item>
+              <title>Missing Link Entry</title>
+              <pubDate>{t1}</pubDate>
+              <description>Should be skipped because link is absent.</description>
+            </item>
+            <item>
+              <title>Bad Date Entry</title>
+              <link>https://vendor.example/bad-date</link>
+              <pubDate>not-a-valid-date</pubDate>
+              <description>Should be skipped because date is unparseable.</description>
+            </item>
+            """
+        )
+
+        atom_xml = self._atom_doc(
+            f"""
+            <entry>
+              <title>Atom Alternate Entry</title>
+              <link rel="enclosure" href="https://atom.example/image.png" />
+              <link rel="self" href="https://atom.example/self-1" />
+              <link rel="alternate" type="text/html" href="https://atom.example/post-1" />
+              <published>{t3}</published>
+              <summary>Atom summary text.</summary>
+            </entry>
+            <entry>
+              <title>Atom Updated Only Entry</title>
+              <link href="https://atom.example/post-2" />
+              <updated>{t4}</updated>
+              <content type="html">&lt;div&gt;Atom content text.&lt;/div&gt;</content>
+            </entry>
+            """
+        )
+
+        test_feeds = [
+            {
+                "slug": "vendor_rss",
+                "name": "Vendor RSS",
+                "url": "https://vendor.example/feed.xml",
+                "category": "DEV_CLOUD",
+            },
+            {
+                "slug": "sec_atom",
+                "name": "Security Atom",
+                "url": "https://atom.example/feed.atom",
+                "category": "CVE_SECURITY",
+            },
+        ]
+
+        responses = {
+            "https://vendor.example/feed.xml": _make_rss_response(rss_xml),
+            "https://atom.example/feed.atom": _make_rss_response(atom_xml),
+        }
+        mock_get.side_effect = lambda url, *args, **kwargs: responses[url]
+
+        with mock.patch.object(fetch_news, "RSS_FEEDS", test_feeds):
+            with self.assertLogs(fetch_news.logger, level="INFO") as cm:
+                items = fetch_news.fetch_rss_feeds()
+
+        self.assertNotIn("rss", fetch_news.SOURCE_ERRORS)
+        self.assertEqual(len(items), 4)
+        self.assertEqual(
+            [item["url"] for item in items],
+            [
+                "https://vendor.example/rss-1",
+                "https://vendor.example/rss-2",
+                "https://atom.example/post-1",
+                "https://atom.example/post-2",
+            ],
+        )
+        self.assertEqual(items[0]["category"], "DEV_CLOUD")
+        self.assertEqual(items[1]["category"], "DEV_CLOUD")
+        self.assertEqual(items[2]["category"], "CVE_SECURITY")
+        self.assertEqual(items[3]["category"], "CVE_SECURITY")
+        self.assertIn("Plain RSS summary.", items[0]["raw_context"])
+        self.assertIn("Body from content:encoded.", items[1]["raw_context"])
+        self.assertIn("Atom summary text.", items[2]["raw_context"])
+        self.assertIn("Atom content text.", items[3]["raw_context"])
+        self.assertTrue(all(item["event_start_date"] is None for item in items))
+
+        for call in mock_get.call_args_list:
+            self.assertEqual(call.kwargs["timeout"], 15)
+            self.assertEqual(
+                call.kwargs["headers"]["User-Agent"],
+                "SecDigestBot/1.0 (+https://secdigest.vercel.app)",
+            )
+
+        self.assertTrue(
+            any(
+                "RSS: Fetched 4 items from 2/2 feeds in last 36h." in msg
+                for msg in cm.output
+            ),
+            f"Expected summary log line, got: {cm.output}",
+        )
+
+    @mock.patch("fetch_news.requests.get")
+    def test_filters_items_older_than_36_hours(self, mock_get):
+        now = datetime.now(timezone.utc)
+        t_1h = format_datetime(now - timedelta(hours=1), usegmt=True)
+        t_35h = format_datetime(now - timedelta(hours=35), usegmt=True)
+        t_37h = format_datetime(now - timedelta(hours=37), usegmt=True)
+        t_72h = (now - timedelta(hours=72)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        rss_xml = self._rss_doc(
+            f"""
+            <item>
+              <title>Within 35h</title>
+              <link>https://example.com/35h</link>
+              <pubDate>{t_35h}</pubDate>
+              <description>Still fresh.</description>
+            </item>
+            <item>
+              <title>Too Old 37h</title>
+              <link>https://example.com/37h</link>
+              <pubDate>{t_37h}</pubDate>
+              <description>Expired.</description>
+            </item>
+            <item>
+              <title>Fresh 1h</title>
+              <link>https://example.com/1h</link>
+              <pubDate>{t_1h}</pubDate>
+              <description>Very fresh.</description>
+            </item>
+            <item>
+              <title>Way Old 72h</title>
+              <link>https://example.com/72h</link>
+              <dc:date>{t_72h}</dc:date>
+              <description>Way expired.</description>
+            </item>
+            """
+        )
+
+        test_feeds = [
+            {
+                "slug": "window_test",
+                "name": "Window Test",
+                "url": "https://example.com/window.xml",
+                "category": "CVE_SECURITY",
+            }
+        ]
+        mock_get.return_value = _make_rss_response(rss_xml)
+
+        with mock.patch.object(fetch_news, "RSS_FEEDS", test_feeds):
+            items = fetch_news.fetch_rss_feeds()
+
+        self.assertEqual(
+            [item["url"] for item in items],
+            ["https://example.com/1h", "https://example.com/35h"],
+        )
+
+    @mock.patch("fetch_news.requests.get")
+    def test_per_feed_cap_5_and_total_cap_30_newest_first(self, mock_get):
+        now = datetime.now(timezone.utc)
+        test_feeds = []
+        responses = {}
+        expected_after_per_feed_cap = []
+
+        # Feed 0 has 7 very recent items (ages 10..70m) in scrambled order; only top 5 must survive.
+        feed0_ages = [50, 20, 70, 10, 60, 30, 40]
+        feed0_items_xml = []
+        for idx, age_min in enumerate(feed0_ages):
+            pub_str = format_datetime(now - timedelta(minutes=age_min), usegmt=True)
+            link = f"https://feed0.example/post-{age_min}"
+            feed0_items_xml.append(
+                f"<item><title>Feed0 {idx}</title><link>{link}</link>"
+                f"<pubDate>{pub_str}</pubDate><description>Body</description></item>"
+            )
+            if age_min <= 50:
+                expected_after_per_feed_cap.append((age_min, link))
+
+        test_feeds.append(
+            {
+                "slug": "feed0",
+                "name": "Feed 0",
+                "url": "https://feed0.example/rss.xml",
+                "category": "DEV_CLOUD",
+            }
+        )
+        responses["https://feed0.example/rss.xml"] = _make_rss_response(
+            self._rss_doc("\n".join(feed0_items_xml))
+        )
+
+        # Feeds 1..7 each have 5 items (35 total) with unique ages 200..600m -> 40 total after per-feed cap.
+        for f_idx in range(1, 8):
+            url = f"https://feed{f_idx}.example/rss.xml"
+            test_feeds.append(
+                {
+                    "slug": f"feed{f_idx}",
+                    "name": f"Feed {f_idx}",
+                    "url": url,
+                    "category": "CVE_SECURITY",
+                }
+            )
+            xml_parts = []
+            for i_idx in range(5):
+                age_min = 200 + f_idx * 50 + i_idx * 7
+                pub_str = format_datetime(now - timedelta(minutes=age_min), usegmt=True)
+                link = f"https://feed{f_idx}.example/post-{age_min}"
+                xml_parts.append(
+                    f"<item><title>Feed{f_idx} {i_idx}</title><link>{link}</link>"
+                    f"<pubDate>{pub_str}</pubDate><description>Body</description></item>"
+                )
+                expected_after_per_feed_cap.append((age_min, link))
+            responses[url] = _make_rss_response(self._rss_doc("\n".join(xml_parts)))
+
+        mock_get.side_effect = lambda url, *args, **kwargs: responses[url]
+
+        with mock.patch.object(fetch_news, "RSS_FEEDS", test_feeds):
+            items = fetch_news.fetch_rss_feeds()
+
+        expected_top_30_urls = [
+            link for _, link in sorted(expected_after_per_feed_cap, key=lambda p: p[0])[:30]
+        ]
+
+        self.assertEqual(len(items), 30)
+        self.assertEqual([item["url"] for item in items], expected_top_30_urls)
+        feed0_returned = [item for item in items if item["source_id"].startswith("rss_feed0_")]
+        self.assertEqual(len(feed0_returned), 5)
+        self.assertNotIn("https://feed0.example/post-60", [item["url"] for item in items])
+        self.assertNotIn("https://feed0.example/post-70", [item["url"] for item in items])
+
+    @mock.patch("fetch_news.requests.get")
+    def test_source_id_is_stable_across_runs_and_matches_sha1_format(self, mock_get):
+        now = datetime.now(timezone.utc)
+        pub_str = format_datetime(now - timedelta(hours=1), usegmt=True)
+        link = "https://openai.com/news/stable-launch-post/"
+        rss_xml = self._rss_doc(
+            f"""
+            <item>
+              <title>Stable Launch</title>
+              <link>{link}</link>
+              <pubDate>{pub_str}</pubDate>
+              <description>Details here.</description>
+            </item>
+            """
+        )
+        test_feeds = [
+            {
+                "slug": "openai",
+                "name": "OpenAI News",
+                "url": "https://openai.com/news/rss.xml",
+                "category": "DEV_CLOUD",
+            }
+        ]
+        mock_get.side_effect = lambda *args, **kwargs: _make_rss_response(rss_xml)
+
+        with mock.patch.object(fetch_news, "RSS_FEEDS", test_feeds):
+            first_run = fetch_news.fetch_rss_feeds()
+            second_run = fetch_news.fetch_rss_feeds()
+
+        expected_id = f"rss_openai_{hashlib.sha1(link.encode('utf-8')).hexdigest()[:12]}"
+        self.assertEqual(first_run[0]["source_id"], expected_id)
+        self.assertEqual(second_run[0]["source_id"], expected_id)
+
+    @mock.patch("fetch_news.requests.get")
+    def test_strips_html_tags_unescapes_entities_collapses_whitespace_and_truncates(
+        self, mock_get
+    ):
+        now = datetime.now(timezone.utc)
+        t1 = format_datetime(now - timedelta(hours=1), usegmt=True)
+        t2 = format_datetime(now - timedelta(hours=2), usegmt=True)
+        long_body = "<p>" + ("word " * 150) + "</p>"
+
+        rss_xml = self._rss_doc(
+            f"""
+            <item>
+              <title><![CDATA[Zero-Day &amp; <b>RCE</b> Advisory]]></title>
+              <link>https://sec.example/html-item</link>
+              <pubDate>{t1}</pubDate>
+              <description><![CDATA[
+                <script>alert('xss')</script>
+                <style>.hidden {{ display: none; }}</style>
+                <!-- internal note -->
+                <p>First &amp; <b>bold</b><br/>Line&nbsp;&nbsp;&nbsp;two &quot;quoted&quot; &lt;tag&gt;.</p>
+              ]]></description>
+            </item>
+            <item>
+              <title>Long Summary Item</title>
+              <link>https://sec.example/long-item</link>
+              <pubDate>{t2}</pubDate>
+              <description><![CDATA[{long_body}]]></description>
+            </item>
+            """
+        )
+        test_feeds = [
+            {
+                "slug": "sec_blog",
+                "name": "Sec Blog",
+                "url": "https://sec.example/feed.xml",
+                "category": "CVE_SECURITY",
+            }
+        ]
+        mock_get.return_value = _make_rss_response(rss_xml)
+
+        with mock.patch.object(fetch_news, "RSS_FEEDS", test_feeds):
+            items = fetch_news.fetch_rss_feeds()
+
+        self.assertEqual(len(items), 2)
+        self.assertEqual(items[0]["title"], "Zero-Day & RCE Advisory")
+        ctx0 = items[0]["raw_context"]
+        self.assertIn('First & bold Line two "quoted" <tag>.', ctx0)
+        self.assertNotIn("<p>", ctx0)
+        self.assertNotIn("<b>", ctx0)
+        self.assertNotIn("alert('xss')", ctx0)
+        self.assertNotIn(".hidden", ctx0)
+        self.assertNotIn("internal note", ctx0)
+
+        summary_line = items[1]["raw_context"].split("Summary: ", 1)[1]
+        self.assertLessEqual(len(summary_line), 400)
+        self.assertTrue(summary_line.endswith("..."))
+
+    @mock.patch("fetch_news.requests.get")
+    def test_malformed_feed_logs_error_sets_source_errors_and_others_still_return(
+        self, mock_get
+    ):
+        now = datetime.now(timezone.utc)
+        t1 = format_datetime(now - timedelta(hours=1), usegmt=True)
+        valid_xml = self._rss_doc(
+            f"""
+            <item>
+              <title>Good Feed Item</title>
+              <link>https://good.example/post-1</link>
+              <pubDate>{t1}</pubDate>
+              <description>Valid summary.</description>
+            </item>
+            """
+        )
+
+        test_feeds = [
+            {
+                "slug": "broken_xml",
+                "name": "Broken XML Feed",
+                "url": "https://broken.example/feed.xml",
+                "category": "DEV_CLOUD",
+            },
+            {
+                "slug": "timeout_feed",
+                "name": "Timeout Feed",
+                "url": "https://timeout.example/feed.xml",
+                "category": "CVE_SECURITY",
+            },
+            {
+                "slug": "good_feed",
+                "name": "Good Feed",
+                "url": "https://good.example/feed.xml",
+                "category": "CVE_SECURITY",
+            },
+        ]
+
+        def _fake_get(url, *args, **kwargs):
+            if url == "https://broken.example/feed.xml":
+                return _make_rss_response(b"<rss><channel><item><title>unclosed")
+            if url == "https://timeout.example/feed.xml":
+                raise RuntimeError("read timed out")
+            return _make_rss_response(valid_xml)
+
+        mock_get.side_effect = _fake_get
+
+        with mock.patch.object(fetch_news, "RSS_FEEDS", test_feeds):
+            with self.assertLogs(fetch_news.logger, level="ERROR") as cm:
+                items = fetch_news.fetch_rss_feeds()
+
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["url"], "https://good.example/post-1")
+        self.assertTrue(any("Broken XML Feed" in msg for msg in cm.output))
+        self.assertTrue(any("Timeout Feed" in msg for msg in cm.output))
+        self.assertIn("rss", fetch_news.SOURCE_ERRORS)
+        self.assertIn("Broken XML Feed", fetch_news.SOURCE_ERRORS["rss"])
+        self.assertIn("Timeout Feed", fetch_news.SOURCE_ERRORS["rss"])
+
+    @mock.patch("fetch_news.requests.get")
+    def test_rejects_oversized_response_by_header_and_stream_size(self, mock_get):
+        now = datetime.now(timezone.utc)
+        t1 = format_datetime(now - timedelta(hours=1), usegmt=True)
+        valid_xml = self._rss_doc(
+            f"""
+            <item>
+              <title>Small Valid Item</title>
+              <link>https://small.example/post-1</link>
+              <pubDate>{t1}</pubDate>
+              <description>Small feed body.</description>
+            </item>
+            """
+        )
+
+        test_feeds = [
+            {
+                "slug": "huge_header",
+                "name": "Huge Header Feed",
+                "url": "https://huge-header.example/feed.xml",
+                "category": "DEV_CLOUD",
+            },
+            {
+                "slug": "huge_stream",
+                "name": "Huge Stream Feed",
+                "url": "https://huge-stream.example/feed.xml",
+                "category": "DEV_CLOUD",
+            },
+            {
+                "slug": "small_feed",
+                "name": "Small Feed",
+                "url": "https://small.example/feed.xml",
+                "category": "DEV_CLOUD",
+            },
+        ]
+
+        header_resp = _make_rss_response(
+            b"<rss/>",
+            headers={"Content-Length": str(fetch_news.RSS_MAX_BYTES + 1024)},
+        )
+        stream_resp = _make_rss_response(
+            chunks=[b"a" * (1024 * 1024) for _ in range(6)],
+            headers={},
+        )
+        small_resp = _make_rss_response(valid_xml)
+
+        responses = {
+            "https://huge-header.example/feed.xml": header_resp,
+            "https://huge-stream.example/feed.xml": stream_resp,
+            "https://small.example/feed.xml": small_resp,
+        }
+        mock_get.side_effect = lambda url, *args, **kwargs: responses[url]
+
+        with mock.patch.object(fetch_news, "RSS_FEEDS", test_feeds):
+            with self.assertLogs(fetch_news.logger, level="ERROR") as cm:
+                items = fetch_news.fetch_rss_feeds()
+
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["url"], "https://small.example/post-1")
+        header_resp.iter_content.assert_not_called()
+        header_resp.close.assert_called_once()
+        stream_resp.close.assert_called_once()
+        self.assertTrue(any("Huge Header Feed" in msg for msg in cm.output))
+        self.assertTrue(any("Huge Stream Feed" in msg for msg in cm.output))
+        self.assertIn("rss", fetch_news.SOURCE_ERRORS)
+        self.assertIn("Huge Header Feed", fetch_news.SOURCE_ERRORS["rss"])
+        self.assertIn("Huge Stream Feed", fetch_news.SOURCE_ERRORS["rss"])
+
+    def test_dry_run_counts_line_contains_rss(self):
+        rss_candidates = [
+            {
+                "source_id": "rss_openai_0123456789ab",
+                "category": "DEV_CLOUD",
+                "title": "OpenAI Release",
+                "url": "https://openai.com/news/release",
+                "raw_context": "Source: OpenAI News",
+                "event_start_date": None,
+            },
+            {
+                "source_id": "rss_krebs_fedcba987654",
+                "category": "CVE_SECURITY",
+                "title": "Krebs Investigation",
+                "url": "https://krebsonsecurity.com/2026/11/post/",
+                "raw_context": "Source: Krebs on Security",
+                "event_start_date": None,
+            },
+        ]
+        stdout_buf = io.StringIO()
+        with ExitStack() as stack:
+            stack.enter_context(
+                mock.patch.object(sys, "argv", ["fetch_news.py", "--dry-run"])
+            )
+            stack.enter_context(mock.patch.dict(os.environ, {}, clear=True))
+            stack.enter_context(
+                mock.patch("fetch_news.datetime", _FixedTuesdayDatetime)
+            )
+            stack.enter_context(mock.patch("fetch_news.fetch_cisa_kev", return_value=[]))
+            stack.enter_context(
+                mock.patch("fetch_news.fetch_openrouter_free_models", return_value=[])
+            )
+            stack.enter_context(
+                mock.patch("fetch_news.fetch_hacker_news", return_value=[])
+            )
+            stack.enter_context(
+                mock.patch("fetch_news.fetch_status_incidents", return_value=[])
+            )
+            stack.enter_context(mock.patch("fetch_news.fetch_ctftime", return_value=[]))
+            stack.enter_context(
+                mock.patch("fetch_news.fetch_rss_feeds", return_value=rss_candidates)
+            )
+            mock_create_client = stack.enter_context(
+                mock.patch("fetch_news.create_client")
+            )
+            mock_curate = stack.enter_context(
+                mock.patch("fetch_news.curate_with_gemini")
+            )
+
+            with redirect_stdout(stdout_buf):
+                fetch_news.main()
+
+            mock_create_client.assert_not_called()
+            mock_curate.assert_not_called()
+
+        output = stdout_buf.getvalue()
+        self.assertIn("--- DRY RUN SOURCE COUNTS ---", output)
+        counts_section = output.split("--- DRY RUN SOURCE COUNTS ---", 1)[1]
+        counts_line = counts_section.strip().splitlines()[0]
+        self.assertIn("rss: 2", counts_line)
+
+    def test_summary_records_rss_error_and_keeps_valid_rss_candidates(self):
+        now = _FixedTuesdayDatetime.now(timezone.utc)
+        t1 = format_datetime(now - timedelta(hours=1), usegmt=True)
+        valid_xml = self._rss_doc(
+            f"""
+            <item>
+              <title>AWS Bulletin</title>
+              <link>https://aws.amazon.com/security/bulletin-1</link>
+              <pubDate>{t1}</pubDate>
+              <description>Security advisory.</description>
+            </item>
+            """
+        )
+        test_feeds = [
+            {
+                "slug": "aws_security",
+                "name": "AWS Security Bulletins",
+                "url": "https://aws.amazon.com/security/security-bulletins/rss/feed/",
+                "category": "CVE_SECURITY",
+            },
+            {
+                "slug": "broken",
+                "name": "Broken Feed",
+                "url": "https://broken.example/feed/",
+                "category": "DEV_CLOUD",
+            },
+        ]
+
+        def _fake_get(url, *args, **kwargs):
+            if url == "https://broken.example/feed/":
+                return _make_rss_response(b"<rss><broken")
+            return _make_rss_response(valid_xml)
+
+        with tempfile.TemporaryDirectory() as tmp_dir, ExitStack() as stack:
+            summary_path = Path(tmp_dir) / "step_summary.md"
+            stack.enter_context(mock.patch.object(sys, "argv", ["fetch_news.py"]))
+            stack.enter_context(
+                mock.patch.dict(
+                    os.environ,
+                    {
+                        "SUPABASE_URL": "https://example.supabase.co",
+                        "SUPABASE_SERVICE_ROLE_KEY": "test-service-role-key",
+                        "GEMINI_API_KEY": "test-gemini-key",
+                        "GITHUB_STEP_SUMMARY": str(summary_path),
+                    },
+                    clear=True,
+                )
+            )
+            stack.enter_context(
+                mock.patch("fetch_news.datetime", _FixedTuesdayDatetime)
+            )
+            stack.enter_context(mock.patch.object(fetch_news, "RSS_FEEDS", test_feeds))
+            stack.enter_context(
+                mock.patch("fetch_news.requests.get", side_effect=_fake_get)
+            )
+            stack.enter_context(mock.patch("fetch_news.fetch_cisa_kev", return_value=[]))
+            stack.enter_context(
+                mock.patch("fetch_news.fetch_openrouter_free_models", return_value=[])
+            )
+            stack.enter_context(
+                mock.patch("fetch_news.fetch_hacker_news", return_value=[])
+            )
+            stack.enter_context(
+                mock.patch("fetch_news.fetch_status_incidents", return_value=[])
+            )
+            stack.enter_context(mock.patch("fetch_news.fetch_ctftime", return_value=[]))
+            stack.enter_context(mock.patch("fetch_news.create_client"))
+            stack.enter_context(
+                mock.patch("fetch_news.get_existing_source_ids", return_value=set())
+            )
+            stack.enter_context(
+                mock.patch(
+                    "fetch_news.curate_with_gemini",
+                    return_value=[_make_curated_item("rss_aws_security_000000000000")],
+                )
+            )
+            stack.enter_context(
+                mock.patch("fetch_news.save_to_supabase", return_value=1)
+            )
+            stack.enter_context(mock.patch("fetch_news.record_seen_sources"))
+
+            with self.assertLogs(fetch_news.logger, level="ERROR"):
+                fetch_news.main()
+
+            content = summary_path.read_text(encoding="utf-8")
+            self.assertIn("| rss | 1 | error |", content)
+            self.assertIn("- Failed sources: rss", content)
+            self.assertIn("- Status: ok", content)
 
 
 if __name__ == "__main__":
