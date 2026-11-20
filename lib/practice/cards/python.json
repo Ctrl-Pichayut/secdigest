@@ -2686,6 +2686,401 @@
     "explanation": "Bitwise OR (|) sets the ADMIN bit, so flags | ADMIN is always non-zero and truthy even when the user lacks that flag. Use bitwise AND (&) to check whether the bit is actually set."
   },
   {
+    "id": "py-169",
+    "lang": "python",
+    "topic": "Paths & shell safety",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "from pathlib import PurePosixPath\nbase = PurePosixPath('/srv/uploads')\na = base / 'img' / 'cat.png'\nb = base / '/etc/hosts'\nprint(a)\nprint(b)",
+    "choices": [
+      "/srv/uploads/img/cat.png\n/etc/hosts",
+      "/srv/uploads/img/cat.png\n/srv/uploads/etc/hosts",
+      "/srv/uploads/img/cat.png\n/srv/uploads//etc/hosts",
+      "ValueError"
+    ],
+    "answer": 0,
+    "explanation": "Like os.path.join(), PurePosixPath's / operator discards the base path whenever a right-hand segment starts with '/'. Never assume base / user_input stays inside base without checking containment afterward."
+  },
+  {
+    "id": "py-170",
+    "lang": "python",
+    "topic": "Paths & shell safety",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "from pathlib import PurePosixPath\np = PurePosixPath('/srv/app') / '../secret.txt'\nprint(p)\nprint('..' in p.parts, p.is_relative_to('/srv/app'))",
+    "choices": [
+      "/srv/app/../secret.txt\nTrue True",
+      "/srv/secret.txt\nFalse False",
+      "/srv/app/../secret.txt\nTrue False",
+      "/srv/secret.txt\nFalse True"
+    ],
+    "answer": 0,
+    "explanation": "PurePosixPath does not collapse '..' segments because doing so without checking symlinks can change what a path means. Because '..' remains in p.parts, is_relative_to('/srv/app') still returns True until the path is normalized or resolved."
+  },
+  {
+    "id": "py-171",
+    "lang": "python",
+    "topic": "Paths & shell safety",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import os.path\na = os.path.normpath('/srv/app/../../etc/passwd')\nb = os.path.normpath('/srv/app/./logs/')\nprint(a)\nprint(b)",
+    "choices": [
+      "/etc/passwd\n/srv/app/logs",
+      "/srv/etc/passwd\n/srv/app/logs/",
+      "/etc/passwd\n/srv/app/logs/",
+      "/srv/app/../../etc/passwd\n/srv/app/logs"
+    ],
+    "answer": 0,
+    "explanation": "os.path.normpath() lexically collapses '.' and '..' segments and strips trailing slashes without touching the filesystem. Lexical normalization alone does not follow symlinks on disk, so use Path.resolve() when working with real files."
+  },
+  {
+    "id": "py-172",
+    "lang": "python",
+    "topic": "Paths & shell safety",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import posixpath\nfrom pathlib import PurePosixPath\nbase = '/srv/app'\nfull = posixpath.normpath(posixpath.join(base, '../app2/x'))\na = full.startswith(base)\nb = full.startswith(base + '/')\nc = PurePosixPath(full).is_relative_to(base)\nprint(a, b, c)",
+    "choices": [
+      "True False False",
+      "False False False",
+      "True True False",
+      "True False True"
+    ],
+    "answer": 0,
+    "explanation": "Checking startswith('/srv/app') without a trailing '/' is bypassed by sibling directories like '/srv/app2/x'. Adding a trailing separator (base + '/') or using PurePosixPath.is_relative_to() checks full path segments instead of raw string prefixes."
+  },
+  {
+    "id": "py-173",
+    "lang": "python",
+    "topic": "Paths & shell safety",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "from pathlib import PurePosixPath\np = PurePosixPath('report.pdf.exe')\nprint(p.suffix, p.stem)\nprint(p.suffixes, '.pdf' in p.name)",
+    "choices": [
+      ".exe report.pdf\n['.pdf', '.exe'] True",
+      ".pdf.exe report\n['.pdf', '.exe'] True",
+      ".pdf report\n['.pdf', '.exe'] True",
+      ".exe report\n['.exe'] True"
+    ],
+    "answer": 0,
+    "explanation": "suffix returns only the final extension ('.exe') and stem strips only that last suffix ('report.pdf'), while suffixes lists every extension. Validating uploads with '.pdf' in filename is bypassed by double extensions; check p.suffix.lower() against an allow-list instead."
+  },
+  {
+    "id": "py-174",
+    "lang": "python",
+    "topic": "Paths & shell safety",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import shlex\ncmd = 'grep \"failed login\" /var/log/auth.log'\na = cmd.split()\nb = shlex.split(cmd)\nprint(len(a), a[1])\nprint(len(b), b[1])",
+    "choices": [
+      "4 \"failed\n3 failed login",
+      "3 failed login\n3 failed login",
+      "4 \"failed\n3 \"failed login\"",
+      "4 failed\n3 failed login"
+    ],
+    "answer": 0,
+    "explanation": "str.split() breaks on every space and leaves quote characters attached to the tokens. shlex.split() parses POSIX shell quoting rules, keeping 'failed login' as one argument and removing the surrounding quotes."
+  },
+  {
+    "id": "py-175",
+    "lang": "python",
+    "topic": "Paths & shell safety",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import shlex\nprint(shlex.quote('app.log'))\nprint(shlex.quote('a; whoami'))\nprint(shlex.quote(\"it's\"))",
+    "choices": [
+      "app.log\n'a; whoami'\n'it'\"'\"'s'",
+      "'app.log'\n'a; whoami'\n'it\\'s'",
+      "app.log\n\"a; whoami\"\n\"it's\"",
+      "app.log\na\\;\\ whoami\nit\\'s"
+    ],
+    "answer": 0,
+    "explanation": "shlex.quote() leaves safe tokens like 'app.log' unquoted and wraps strings with spaces or metacharacters in single quotes. Because POSIX single quotes cannot escape a literal ', it closes the quote, inserts \"'\", and reopens it; still prefer passing a list to subprocess.run()."
+  },
+  {
+    "id": "py-176",
+    "lang": "python",
+    "topic": "Paths & shell safety",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import shlex\nargs = ['ping', '-c', '1', 'example.com; id']\ncmd = shlex.join(args)\nprint(cmd)\nprint(shlex.split(cmd) == args)",
+    "choices": [
+      "ping -c 1 'example.com; id'\nTrue",
+      "ping -c 1 example.com; id\nFalse",
+      "'ping' '-c' '1' 'example.com; id'\nTrue",
+      "ping -c 1 \"example.com; id\"\nTrue"
+    ],
+    "answer": 0,
+    "explanation": "shlex.join() quotes each argument with shlex.quote() only when needed and joins them with spaces, acting as the inverse of shlex.split(). It is handy for logging or displaying safe POSIX commands, though subprocess.run(args) should still receive the list directly."
+  },
+  {
+    "id": "py-177",
+    "lang": "python",
+    "topic": "Paths & shell safety",
+    "kind": "order",
+    "prompt": "Put the lines in order so this validates an allowed command and prints grep 'err 500' app.log.",
+    "lines": [
+      "import shlex",
+      "def safe_cmd(raw, allowed):",
+      "    args = shlex.split(raw)",
+      "    if not args or args[0] not in allowed:",
+      "        raise ValueError('blocked')",
+      "    return shlex.join(args)",
+      "print(safe_cmd('grep \"err 500\" app.log', {'grep'}))"
+    ],
+    "explanation": "Parse the raw string into tokens with shlex.split() first, verify the binary against an allow-list, and only then format the arguments with shlex.join(). Checking args[0] blocks unauthorized binaries while preserving quoted arguments.",
+    "expectOutput": "grep 'err 500' app.log"
+  },
+  {
+    "id": "py-178",
+    "lang": "python",
+    "topic": "Paths & shell safety",
+    "kind": "bug",
+    "prompt": "Passing 'example.com; id' runs an extra command in the shell. Which line is the security bug?",
+    "lines": [
+      "def check_host(host):",
+      "    if not host or len(host) > 253:",
+      "        raise ValueError('bad host')",
+      "    return subprocess.run(f\"ping {host}\", shell=True)"
+    ],
+    "bugLine": 3,
+    "fixedLine": "    return subprocess.run(['ping', host])",
+    "explanation": "With shell=True, the shell parses metacharacters like ; or && inside the formatted string and executes injected commands. Pass an argument list like ['ping', host] with the default shell=False so host is treated purely as one argument."
+  },
+  {
+    "id": "py-179",
+    "lang": "python",
+    "topic": "Paths & shell safety",
+    "kind": "bug",
+    "prompt": "A crafted archive with '../app.py' writes outside dest (Zip Slip). Which line is the security bug?",
+    "lines": [
+      "def unpack_zip(zf, dest):",
+      "    root = Path(dest).resolve()",
+      "    for name in zf.namelist():",
+      "        zf.extract(name, root)"
+    ],
+    "bugLine": 3,
+    "fixedLine": "        if (root / name).resolve().is_relative_to(root): zf.extract(name, root)",
+    "explanation": "ZipFile.extract() trusts archive member names, so entries containing '..' or leading slashes can overwrite files outside dest. Resolve (root / name) and verify is_relative_to(root) before extracting any member."
+  },
+  {
+    "id": "py-180",
+    "lang": "python",
+    "topic": "Paths & shell safety",
+    "kind": "bug",
+    "prompt": "Passing '../../etc/cron.d/job' as filename lets a caller overwrite arbitrary files. Which line is the security bug?",
+    "lines": [
+      "def stage_upload(filename, data):",
+      "    tmp_dir = tempfile.gettempdir()",
+      "    with open(f'{tmp_dir}/{filename}', 'wb') as f:",
+      "        f.write(data)"
+    ],
+    "bugLine": 2,
+    "fixedLine": "    with tempfile.NamedTemporaryFile(dir=tmp_dir, delete=False) as f:",
+    "explanation": "Building a temp path from untrusted user input enables path traversal and symlink attacks in shared temp directories. Use tempfile.NamedTemporaryFile() (or mkstemp()) to generate an unpredictable, exclusively created file instead."
+  },
+  {
+    "id": "py-181",
+    "lang": "python",
+    "topic": "Validating untrusted input",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "vals = [int(' 42 '), int('+7'), int('1_000')]\ntry:\n    vals.append(int('0x10'))\nexcept ValueError:\n    vals.append('err')\nprint(vals)",
+    "choices": [
+      "[42, 7, 1000, 'err']",
+      "[42, 7, 1000, 16]",
+      "[42, 7, 'err', 'err']",
+      "ValueError"
+    ],
+    "answer": 0,
+    "explanation": "int() defaults to base 10 and accepts surrounding whitespace, leading '+'/'-' signs, and digit-grouping underscores like '1_000'. Prefixed literals such as '0x10' raise ValueError unless base=16 or base=0 is passed, so check digit format explicitly when strict decimal input is required."
+  },
+  {
+    "id": "py-182",
+    "lang": "python",
+    "topic": "Validating untrusted input",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import math\nn = float('nan')\ni = float('inf')\nprint(n == n, n < 0, n > 0)\nprint(i > 10**9, math.isfinite(n), math.isfinite(i))",
+    "choices": [
+      "False False False\nTrue False False",
+      "True False False\nTrue False False",
+      "False False False\nTrue False True",
+      "False True False\nTrue False False"
+    ],
+    "answer": 0,
+    "explanation": "float() accepts 'nan' and 'inf', and NaN evaluates to False in every ordered or equality comparison—even nan == nan. Because NaN slips past checks like 'if x < 0 or x > 100', verify untrusted floats with math.isfinite() before range checks."
+  },
+  {
+    "id": "py-183",
+    "lang": "python",
+    "topic": "Validating untrusted input",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "s = '²'\nprint(s.isdigit(), s.isdecimal())\ntry:\n    print(int(s))\nexcept ValueError:\n    print('ValueError')",
+    "choices": [
+      "True False\nValueError",
+      "True True\n2",
+      "False False\nValueError",
+      "True False\n2"
+    ],
+    "answer": 0,
+    "explanation": "str.isdigit() returns True for superscripts like '²', whereas str.isdecimal() only accepts base-10 decimal digits. Because int('²') raises ValueError, guarding int() with isdigit() still lets crashes through; check s.isascii() and s.isdecimal() for strict ASCII digits."
+  },
+  {
+    "id": "py-184",
+    "lang": "python",
+    "topic": "Validating untrusted input",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import unicodedata\ns1 = 'ａｄｍｉｎ'\ns2 = 'ﬁle'\nn1 = unicodedata.normalize('NFKC', s1)\nn2 = unicodedata.normalize('NFKC', s2)\nprint(s1 == 'admin', n1, n2, len(n2))",
+    "choices": [
+      "False admin file 4",
+      "True admin file 4",
+      "False admin ﬁle 3",
+      "False ａｄｍｉｎ file 4"
+    ],
+    "answer": 0,
+    "explanation": "NFKC compatibility normalization maps fullwidth characters ('ａｄｍｉｎ') and ligatures ('ﬁ') to plain ASCII ('admin' and 'file'). Normalize untrusted text with NFKC before checking reserved names or filters so lookalike characters cannot slip through and convert later."
+  },
+  {
+    "id": "py-185",
+    "lang": "python",
+    "topic": "Validating untrusted input",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "a, b = 'Straße', 'STRASSE'\nprint(a.lower(), a.casefold())\nprint(a.lower() == b.lower(), a.casefold() == b.casefold())",
+    "choices": [
+      "straße strasse\nFalse True",
+      "strasse strasse\nTrue True",
+      "straße straße\nFalse False",
+      "straße strasse\nTrue True"
+    ],
+    "answer": 0,
+    "explanation": "str.lower() leaves lowercase Unicode letters like 'ß' unchanged, whereas str.casefold() applies full Unicode case folding and expands 'ß' to 'ss'. Use casefold() for case-insensitive identifier or allow-list comparisons across Unicode text."
+  },
+  {
+    "id": "py-186",
+    "lang": "python",
+    "topic": "Validating untrusted input",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import ipaddress\nout = []\nfor raw in ('127.0.0.1', '127.1'):\n    try:\n        out.append(str(ipaddress.ip_address(raw)))\n    except ValueError:\n        out.append('ValueError')\nprint(out)",
+    "choices": [
+      "['127.0.0.1', 'ValueError']",
+      "['127.0.0.1', '127.0.0.1']",
+      "['127.0.0.1', '127.1.0.0']",
+      "['127.0.0.1', 'None']"
+    ],
+    "answer": 0,
+    "explanation": "ipaddress.ip_address() requires four dotted decimal octets for IPv4 and raises ValueError on shorthand forms like '127.1'. Because some HTTP clients and OS resolvers still expand '127.1' to 127.0.0.1, strict parsing blocks shorthand SSRF tricks."
+  },
+  {
+    "id": "py-187",
+    "lang": "python",
+    "topic": "Validating untrusted input",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import ipaddress\na = ipaddress.ip_address('127.0.0.1')\nb = ipaddress.ip_address('203.0.113.5')\nc = ipaddress.ip_address('::1')\nprint(a.is_private, a.is_loopback)\nprint(b.is_private, b.is_loopback, c.is_loopback)",
+    "choices": [
+      "True True\nTrue False True",
+      "False True\nFalse False True",
+      "True True\nFalse False True",
+      "True True\nTrue False False"
+    ],
+    "answer": 0,
+    "explanation": "Python treats loopback addresses ('127.0.0.1', '::1') and RFC 5737 documentation ranges ('203.0.113.5') as is_private because none are globally routable. Only loopback addresses return True for is_loopback, so screen outbound targets using ipaddress flags or is_global."
+  },
+  {
+    "id": "py-188",
+    "lang": "python",
+    "topic": "Validating untrusted input",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import json\nraw = '{\"role\": \"user\", \"role\": \"admin\"}'\ndata = json.loads(raw)\npairs = json.loads(raw, object_pairs_hook=list)\nprint(data['role'], len(pairs))",
+    "choices": [
+      "admin 2",
+      "user 2",
+      "admin 1",
+      "JSONDecodeError"
+    ],
+    "answer": 0,
+    "explanation": "json.loads() silently overwrites earlier keys when a JSON object contains duplicates, keeping the last value ('admin'). If a proxy validates the first key while Python reads the last, attackers can smuggle privileges; use object_pairs_hook to reject duplicate keys."
+  },
+  {
+    "id": "py-189",
+    "lang": "python",
+    "topic": "Validating untrusted input",
+    "kind": "order",
+    "prompt": "Put the lines in order to normalize, validate, and parse a port number so this prints 8080.",
+    "lines": [
+      "import unicodedata",
+      "def parse_port(raw):",
+      "    clean = unicodedata.normalize('NFKC', raw).strip()",
+      "    if not (clean.isascii() and clean.isdecimal()):",
+      "        raise ValueError('digits only')",
+      "    port = int(clean)",
+      "    if not (1 <= port <= 65535):",
+      "        raise ValueError('out of range')",
+      "    return port",
+      "print(parse_port(' ８０８０ '))"
+    ],
+    "explanation": "A validate-then-use pipeline normalizes input first (NFKC and strip), checks the character class before calling int(), and enforces numeric bounds before returning. Rejecting bad input early keeps invalid types and out-of-range ports from reaching downstream code.",
+    "expectOutput": "8080"
+  },
+  {
+    "id": "py-190",
+    "lang": "python",
+    "topic": "Validating untrusted input",
+    "kind": "bug",
+    "prompt": "Schemes like 'data:' or 'gopher:' bypass this URL validator. Which line is the security bug?",
+    "lines": [
+      "def is_allowed_scheme(url):",
+      "    scheme = urlparse(url).scheme.casefold()",
+      "    if not scheme:",
+      "        return False",
+      "    return scheme not in {'javascript', 'file'}"
+    ],
+    "bugLine": 4,
+    "fixedLine": "    return scheme in {'http', 'https'}",
+    "explanation": "Deny-lists fail whenever an attacker chooses a dangerous scheme you forgot to list, such as 'data' or 'gopher'. Replace the deny-list with a strict allow-list (scheme in {'http', 'https'}) so everything unknown is rejected by default."
+  },
+  {
+    "id": "py-191",
+    "lang": "python",
+    "topic": "Validating untrusted input",
+    "kind": "bug",
+    "prompt": "Sending '{\"name\": \"alex\", \"is_admin\": true}' grants any caller admin rights. Which line is the security bug?",
+    "lines": [
+      "def build_account(raw_json):",
+      "    data = json.loads(raw_json)",
+      "    return {",
+      "        'name': str(data.get('name', '')),",
+      "        'is_admin': bool(data.get('is_admin', False)),",
+      "    }"
+    ],
+    "bugLine": 4,
+    "fixedLine": "        'is_admin': False,",
+    "explanation": "Reading 'is_admin' from the client's parsed JSON lets anyone escalate privileges by adding that key to the request body. Set privilege flags strictly from trusted server state and only copy allow-listed user fields like 'name'."
+  },
+  {
+    "id": "py-192",
+    "lang": "python",
+    "topic": "Validating untrusted input",
+    "kind": "bug",
+    "prompt": "Passing 'nan' bypasses the range check and returns NaN. Which line is the security bug?",
+    "lines": [
+      "def parse_discount(raw):",
+      "    pct = float(raw)",
+      "    if pct < 0 or pct > 50:",
+      "        raise ValueError('invalid discount')",
+      "    return pct"
+    ],
+    "bugLine": 2,
+    "fixedLine": "    if not math.isfinite(pct) or not (0 <= pct <= 50):",
+    "explanation": "Every comparison with NaN evaluates to False, so 'pct < 0 or pct > 50' does not catch float('nan'). Check math.isfinite(pct) and invert a positive bounds check (not (0 <= pct <= 50)) so NaN and infinities are always rejected."
+  },
+  {
     "id": "py-058",
     "lang": "python",
     "topic": "CTF toolbox",

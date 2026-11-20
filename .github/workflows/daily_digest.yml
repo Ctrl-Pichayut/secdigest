@@ -2,11 +2,18 @@ name: Daily CyberSec & Tech Digest Ingestion
 
 on:
   schedule:
-    # Scheduled daily at 20:30 UTC (03:30 AM Bangkok time / UTC+7).
-    # GitHub Actions significantly delays scheduled runs (over the last month, runs
-    # scheduled for 06:30 Bangkok actually started between 08:20 and 11:42 Bangkok),
-    # so we schedule 3 hours earlier to finish before the morning commute.
-    - cron: '30 20 * * *'
+    # Measured GitHub Actions schedule delays: with '30 23 * * *' (06:30 Bangkok),
+    # runs over the last month started between 01:20 and 05:10 UTC (08:20-12:10 Bangkok).
+    # Moving to '30 20 * * *' (03:30 Bangkok) still started at 01:50 UTC (08:50 Bangkok),
+    # so a single schedule cannot guarantee delivery before the 07:00 Bangkok commute.
+    # Schedule five off-peak slots (avoiding minutes 0 and 30, the busiest cron slots)
+    # from 17:13 to 23:13 UTC (00:13 to 06:13 Bangkok); the guard job ensures at most
+    # one scheduled run executes per Asia/Bangkok calendar day.
+    - cron: '13 17 * * *'
+    - cron: '43 18 * * *'
+    - cron: '13 20 * * *'
+    - cron: '43 21 * * *'
+    - cron: '13 23 * * *'
   workflow_dispatch:
     inputs:
       practice_refill:
@@ -24,8 +31,78 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  guard:
+    name: Check Daily Digest Run Guard
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+    outputs:
+      should_run: ${{ steps.check.outputs.should_run }}
+
+    steps:
+      - name: Decide whether this run should execute
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          now_epoch=$(date -u +%s)
+          utc_hour=$(date -u -d "@${now_epoch}" +%H)
+          if (( 10#${utc_hour} < 17 )); then
+            cutoff=$(date -u -d "@$((now_epoch - 86400))" +%Y-%m-%dT17:00:00Z)
+          else
+            cutoff=$(date -u -d "@${now_epoch}" +%Y-%m-%dT17:00:00Z)
+          fi
+
+          echo "Event: ${GITHUB_EVENT_NAME}"
+          echo "Cutoff (00:00 Asia/Bangkok): ${cutoff}"
+
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            echo "Decision: should_run=true (workflow_dispatch always runs)"
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+            {
+              echo "Proceeding: manual \`workflow_dispatch\` run (always executes)."
+              echo "- Cutoff (00:00 Asia/Bangkok): \`${cutoff}\`"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          jq_filter='[(.workflow_runs // [])[] | select(.conclusion == "success" and (.id | tostring) != "'"${GITHUB_RUN_ID}"'" and .created_at >= "'"${cutoff}"'")] | .[0] | if . then "\(.updated_at // .created_at)\t\(.id)\t\(.event)\t\(.created_at)" else empty end'
+
+          if existing_run=$(gh api --method GET \
+            "repos/${GITHUB_REPOSITORY}/actions/workflows/daily_digest.yml/runs" \
+            -f status=success \
+            -f "created=>=${cutoff}" \
+            -f per_page=20 \
+            --jq "${jq_filter}"); then
+            if [ -n "${existing_run}" ]; then
+              IFS=$'\t' read -r finished_at run_id run_event run_created <<< "${existing_run}"
+              echo "Decision: should_run=false (Skipped: a successful run already finished at ${finished_at}; run ${run_id}, event ${run_event}, created ${run_created})"
+              echo "should_run=false" >> "$GITHUB_OUTPUT"
+              {
+                echo "Skipped: a successful run already finished at ${finished_at}"
+                echo "- Cutoff (00:00 Asia/Bangkok): \`${cutoff}\`"
+                echo "- Matching run: \`${run_id}\` (event: \`${run_event}\`, created: \`${run_created}\`)"
+              } >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "Decision: should_run=true (no successful run found on or after ${cutoff})"
+              echo "should_run=true" >> "$GITHUB_OUTPUT"
+              {
+                echo "Proceeding: no successful run found on or after \`${cutoff}\` (00:00 Asia/Bangkok)."
+              } >> "$GITHUB_STEP_SUMMARY"
+            fi
+          else
+            echo "Decision: should_run=true (gh api failed; defaulting to run so the digest is not missed)"
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+            {
+              echo "Proceeding: failed to query prior workflow runs via GitHub API; defaulting to run."
+              echo "- Cutoff (00:00 Asia/Bangkok): \`${cutoff}\`"
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
   ingest:
     name: Run Intelligence Ingestion Pipeline
+    needs: guard
+    if: needs.guard.outputs.should_run == 'true'
     runs-on: ubuntu-latest
 
     steps:
