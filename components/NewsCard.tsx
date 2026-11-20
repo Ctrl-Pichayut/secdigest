@@ -12,6 +12,7 @@ import {
 } from 'framer-motion';
 import { ExternalLink, Bookmark, CheckCircle2 } from 'lucide-react';
 import { NewsItem } from '@/lib/types';
+import { type TextSize } from '@/lib/feed/useTextSize';
 import {
   BrainIcon,
   CheckIcon,
@@ -49,7 +50,37 @@ interface NewsCardProps {
   onToggleBookmark: (id: string, currentState: boolean) => void;
   onToggleRead: (id: string, currentState: boolean) => void;
   theme?: 'paper' | 'dusk';
+  textSize?: TextSize;
 }
+
+const TEXT_SIZE_CLASSES: Record<
+  TextSize,
+  {
+    title: string;
+    meta: string;
+    tldr: string;
+    takeaway: string;
+  }
+> = {
+  sm: {
+    title: 'text-[17px] leading-snug',
+    meta: 'text-[11px] sm:text-xs leading-tight',
+    tldr: 'text-xs sm:text-sm leading-relaxed',
+    takeaway: 'text-xs sm:text-[13px] leading-relaxed',
+  },
+  md: {
+    title: 'text-[19px] leading-snug',
+    meta: 'text-xs sm:text-[13px] leading-snug',
+    tldr: 'text-sm sm:text-base leading-relaxed',
+    takeaway: 'text-sm sm:text-[15px] leading-relaxed',
+  },
+  lg: {
+    title: 'text-[21px] leading-snug',
+    meta: 'text-[13px] sm:text-sm leading-snug',
+    tldr: 'text-base sm:text-lg leading-relaxed',
+    takeaway: 'text-base sm:text-[17px] leading-relaxed',
+  },
+};
 
 export function getCtfCountdown(startDateStr: string | null): string | null {
   if (!startDateStr) return null;
@@ -150,7 +181,9 @@ export default function NewsCard({
   onToggleBookmark,
   onToggleRead,
   theme = 'paper',
+  textSize = 'sm',
 }: NewsCardProps) {
+  const sizeClasses = TEXT_SIZE_CLASSES[textSize] ?? TEXT_SIZE_CLASSES.sm;
   // Independent per-card Thai translation state
   const [isThai, setIsThai] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -587,7 +620,7 @@ export default function NewsCard({
 
       {/* Post Title (100% crisp typography, zero dimming) */}
       <h2
-        className={`text-[17px] font-extrabold leading-snug tracking-tight ${
+        className={`${sizeClasses.title} font-extrabold tracking-tight ${
           sourceHost || relativeAge ? 'mb-1' : 'mb-2'
         } ${isDusk ? 'text-[#F2EFFA]' : 'text-[#2A2623]'}`}
       >
@@ -598,7 +631,7 @@ export default function NewsCard({
       {(sourceHost || relativeAge) && (
         <div
           data-testid={`meta-line-${item.id}`}
-          className={`flex items-center gap-1.5 min-w-0 mb-2.5 text-[11px] sm:text-xs font-medium leading-tight ${
+          className={`flex items-center gap-1.5 min-w-0 mb-2.5 ${sizeClasses.meta} font-medium ${
             isDusk ? 'text-[#A9A0C0]' : 'text-[#635C55]'
           }`}
         >
@@ -631,7 +664,7 @@ export default function NewsCard({
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -3 }}
           transition={{ duration: 0.18 }}
-          className={`text-xs sm:text-sm leading-relaxed mb-3.5 font-normal ${
+          className={`${sizeClasses.tldr} mb-3.5 font-normal ${
             isDusk ? 'text-[#D4CDE4]' : 'text-[#443E38]'
           }`}
         >
@@ -649,7 +682,7 @@ export default function NewsCard({
           <LightbulbIcon className="w-3.5 h-3.5 shrink-0" />
           <span>{isThai ? 'สรุปสั้นๆ ว่าทำไมควรรู้' : 'Quick Takeaway'}</span>
         </div>
-        <p className="text-xs sm:text-[13px] font-medium leading-relaxed">
+        <p className={`${sizeClasses.takeaway} font-medium`}>
           {isThai && item.actionable_value_th ? item.actionable_value_th : item.actionable_value}
         </p>
       </div>

@@ -3869,6 +3869,404 @@
     "explanation": "Lexicographical string comparison only matches chronological order for zero-padded ISO dates (YYYY-MM-DD); without padding, '2026-9-5' sorts after '2026-10-1'. Parse both strings into datetime objects with datetime.strptime() before comparing."
   },
   {
+    "id": "py-241",
+    "lang": "python",
+    "topic": "SSRF defenses",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "from urllib.parse import urlsplit\nu1 = urlsplit('https://API.Example.COM/v1')\nu2 = urlsplit('http://example.com@169.254.169.254/')\nprint(u1.hostname)\nprint(u2.username, u2.hostname)",
+    "choices": [
+      "api.example.com\nexample.com 169.254.169.254",
+      "API.Example.COM\nexample.com 169.254.169.254",
+      "api.example.com\nNone example.com",
+      "api.example.com\n169.254.169.254 example.com"
+    ],
+    "answer": 0,
+    "explanation": "urlsplit().hostname automatically lowercases the host and extracts only the part after '@', treating example.com as URL userinfo (username). Prefix checks on http://example.com@169.254.169.254/ can be fooled into targeting the cloud metadata IP instead of example.com."
+  },
+  {
+    "id": "py-242",
+    "lang": "python",
+    "topic": "SSRF defenses",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import ipaddress\nmeta = ipaddress.ip_address('169.254.169.254')\nother = ipaddress.ip_address('192.0.2.10')\nprint(meta.is_link_local, meta.is_loopback, meta.is_global)\nprint(other.is_link_local)",
+    "choices": [
+      "True False False\nFalse",
+      "True True False\nFalse",
+      "False False False\nFalse",
+      "True False True\nFalse"
+    ],
+    "answer": 0,
+    "explanation": "169.254.169.254 sits inside the 169.254.0.0/16 link-local range used by cloud instance metadata services (IMDS), so is_link_local is True while is_loopback and is_global are False. Blocking only loopback addresses misses metadata SSRF; require is_global before making outbound requests."
+  },
+  {
+    "id": "py-243",
+    "lang": "python",
+    "topic": "SSRF defenses",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import ipaddress\naddrs = ['10.0.0.1', '172.16.5.1', '172.32.0.1',\n         '192.168.1.1', '::1']\nprint([ipaddress.ip_address(a).is_private for a in addrs])",
+    "choices": [
+      "[True, True, False, True, True]",
+      "[True, True, True, True, True]",
+      "[True, True, False, True, False]",
+      "[True, False, False, True, True]"
+    ],
+    "answer": 0,
+    "explanation": "ip_address().is_private returns True for all RFC 1918 ranges (10/8, 172.16/12, 192.168/16) as well as IPv6 loopback '::1'. Because 172.16.0.0/12 ends at 172.31.255.255, 172.32.0.1 is public and returns False."
+  },
+  {
+    "id": "py-244",
+    "lang": "python",
+    "topic": "SSRF defenses",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import ipaddress\nip = ipaddress.ip_address('::ffff:127.0.0.1')\nv4 = ip.ipv4_mapped\nprint(ip.version, v4)\nprint(v4.version, v4.is_loopback)",
+    "choices": [
+      "6 127.0.0.1\n4 True",
+      "4 127.0.0.1\n4 True",
+      "6 None\n4 True",
+      "6 ::ffff:7f00:1\n6 False"
+    ],
+    "answer": 0,
+    "explanation": "An IPv4-mapped address like ::ffff:127.0.0.1 parses as an IPv6 address, so checks written for IPv4 (string prefixes, IPv4 networks) do not match it. ip.ipv4_mapped unwraps it to IPv4Address('127.0.0.1'), so unwrap before running SSRF checks instead of relying on version-specific behavior."
+  },
+  {
+    "id": "py-245",
+    "lang": "python",
+    "topic": "SSRF defenses",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import ipaddress\na = ipaddress.ip_address(int('2130706433', 0))\nb = ipaddress.ip_address(int('0x0a000001', 0))\nprint(a, a.is_loopback)\nprint(b, b.is_private)",
+    "choices": [
+      "127.0.0.1 True\n10.0.0.1 True",
+      "2130706433 False\n10.0.0.1 True",
+      "127.0.0.1 True\n10.0.0.1 False",
+      "ValueError"
+    ],
+    "answer": 0,
+    "explanation": "Some HTTP clients and OS resolvers accept decimal (2130706433) or hex (0x0a000001) integers as IPv4 hosts, bypassing naive dotted-quad checks. Converting with int(..., 0) and ipaddress.ip_address() reveals 127.0.0.1 and 10.0.0.1; always validate resolved IPs rather than raw host strings."
+  },
+  {
+    "id": "py-246",
+    "lang": "python",
+    "topic": "SSRF defenses",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "from urllib.parse import urlsplit\nALLOWED = {'http', 'https'}\nurls = [\n    'HTTPS://example.com/a',\n    'file:///etc/hosts',\n    'gopher://127.0.0.1:70/',\n]\nprint([urlsplit(u).scheme in ALLOWED for u in urls])",
+    "choices": [
+      "[True, False, False]",
+      "[False, False, False]",
+      "[True, True, False]",
+      "[True, False, True]"
+    ],
+    "answer": 0,
+    "explanation": "urlsplit() lowercases the scheme, so 'HTTPS://' becomes 'https' and passes the allow-list. Non-HTTP schemes like file:// (local file read) and gopher:// (raw TCP smuggling to internal services) are rejected cleanly by requiring scheme in {'http', 'https'}."
+  },
+  {
+    "id": "py-247",
+    "lang": "python",
+    "topic": "SSRF defenses",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "from urllib.parse import urlsplit\nDEFAULTS = {'http': 80, 'https': 443}\ndef eff_port(url):\n    u = urlsplit(url)\n    return u.port if u.port is not None else DEFAULTS[u.scheme]\nurls = ['https://example.com/a', 'http://example.com:8080/b']\nprint([urlsplit(u).port for u in urls])\nprint([eff_port(u) for u in urls])",
+    "choices": [
+      "[None, 8080]\n[443, 8080]",
+      "[443, 8080]\n[443, 8080]",
+      "[None, '8080']\n[443, 8080]",
+      "[80, 8080]\n[80, 8080]"
+    ],
+    "answer": 0,
+    "explanation": "urlsplit().port returns None when a URL omits the port and an int when one is specified, so you must map None to the scheme's default (80 or 443). Restricting the effective port to an allow-list like {80, 443} stops SSRF probes against internal services on non-web ports."
+  },
+  {
+    "id": "py-248",
+    "lang": "python",
+    "topic": "SSRF defenses",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "from urllib.parse import urlsplit\nimport ipaddress\nu = urlsplit('http://[::1]:8080/metrics')\nnaive = u.netloc.split(':')[0]\nip = ipaddress.ip_address(u.hostname)\nprint(naive, u.hostname, u.port, ip.is_loopback)",
+    "choices": [
+      "[ ::1 8080 True",
+      "[::1] [::1] 8080 True",
+      "::1 ::1 8080 True",
+      "[ [::1] 8080 False"
+    ],
+    "answer": 0,
+    "explanation": "Splitting netloc on ':' breaks on bracketed IPv6 literals, returning '[' instead of the host. urlsplit().hostname strips brackets and port cleanly so ipaddress.ip_address() can parse '::1' and catch loopback targets."
+  },
+  {
+    "id": "py-249",
+    "lang": "python",
+    "topic": "SSRF defenses",
+    "kind": "order",
+    "prompt": "Put the lines in order for a safe outbound fetch check that prints bad_scheme blocked.",
+    "lines": [
+      "import ipaddress, urllib.parse",
+      "def check_url(url, ip_str):",
+      "    u = urllib.parse.urlsplit(url)",
+      "    if u.scheme not in {'http', 'https'}: return 'bad_scheme'",
+      "    ip = ipaddress.ip_address(ip_str)",
+      "    ip = getattr(ip, 'ipv4_mapped', None) or ip",
+      "    if ip in ipaddress.ip_network('127.0.0.0/8'): return 'blocked'",
+      "    return 'ok'",
+      "print(check_url('file:///a', ''), check_url('https://a.test', '::ffff:127.0.0.1'))"
+    ],
+    "explanation": "Validate the URL scheme first, then unwrap any IPv4-mapped IPv6 address before testing it against IPv4 ranges: an IPv6 address is never a member of an IPv4 network, so checking before unwrapping lets ::ffff:127.0.0.1 through. In production, also require ip.is_global and pin the validated IP when connecting.",
+    "expectOutput": "bad_scheme blocked"
+  },
+  {
+    "id": "py-250",
+    "lang": "python",
+    "topic": "SSRF defenses",
+    "kind": "bug",
+    "prompt": "Targets like 'http://127.0.0.1/' or 'http://169.254.169.254/' bypass this SSRF check. Which line is the security bug?",
+    "lines": [
+      "def is_safe_url(url, resolve_ip):",
+      "    u = urlsplit(url)",
+      "    if u.scheme not in {'http', 'https'} or not u.hostname:",
+      "        return False",
+      "    if u.hostname == 'localhost':",
+      "        return False",
+      "    return True"
+    ],
+    "bugLine": 4,
+    "fixedLine": "    if not ipaddress.ip_address(resolve_ip(u.hostname)).is_global:",
+    "explanation": "Comparing the raw hostname string only against 'localhost' misses numeric forms (127.0.0.1, ::1), cloud metadata IPs (169.254.169.254), and DNS records pointing to internal hosts. Resolve the hostname to an IP and reject anything where is_global is False."
+  },
+  {
+    "id": "py-251",
+    "lang": "python",
+    "topic": "SSRF defenses",
+    "kind": "bug",
+    "prompt": "An external URL returning a 302 redirect to http://169.254.169.254/ bypasses validation. Which line is the security bug?",
+    "lines": [
+      "def fetch_public(url):",
+      "    if not is_safe_url(url):",
+      "        raise ValueError('blocked url')",
+      "    resp = http_get(url, allow_redirects=True)",
+      "    return resp.body"
+    ],
+    "bugLine": 3,
+    "fixedLine": "    resp = http_get(url, allow_redirects=False)",
+    "explanation": "Validating only the initial URL while allowing automatic redirects lets an attacker reply with a 302 Location pointing at an internal or metadata endpoint. Set allow_redirects=False and re-validate every redirect target before following it."
+  },
+  {
+    "id": "py-252",
+    "lang": "python",
+    "topic": "SSRF defenses",
+    "kind": "bug",
+    "prompt": "A DNS rebinding server returns a public IP on the first lookup and 127.0.0.1 on the second, hitting localhost. Which line is the security bug?",
+    "lines": [
+      "def fetch_checked(url):",
+      "    u = urlsplit(url)",
+      "    ip = resolve_dns(u.hostname)",
+      "    if not ipaddress.ip_address(ip).is_global:",
+      "        raise ValueError('private ip')",
+      "    return http_get(url)"
+    ],
+    "bugLine": 5,
+    "fixedLine": "    return http_get(f'{u.scheme}://{ip}{u.path}', headers={'Host': u.hostname})",
+    "explanation": "Calling http_get(url) triggers a second DNS lookup after validation, creating a TOCTOU window where DNS rebinding can swap in 127.0.0.1. Pin the already-validated IP for the outbound connection and pass the original hostname in the Host header (and TLS SNI)."
+  },
+  {
+    "id": "py-253",
+    "lang": "python",
+    "topic": "Safe eval & format strings",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import ast\ndata = ast.literal_eval(\"{'port': 443, 'tls': True}\")\ntry:\n    ast.literal_eval(\"len('abc')\")\n    res = 'ok'\nexcept ValueError:\n    res = 'blocked'\nprint(data['port'], data['tls'], res)",
+    "choices": [
+      "443 True blocked",
+      "443 True ok",
+      "443 true blocked",
+      "SyntaxError"
+    ],
+    "answer": 0,
+    "explanation": "ast.literal_eval() parses only Python literals such as dicts, lists, strings, numbers, and booleans, returning {'port': 443, 'tls': True}. Any function call like len('abc') raises ValueError instead of executing, avoiding the code-execution risk of eval()."
+  },
+  {
+    "id": "py-254",
+    "lang": "python",
+    "topic": "Safe eval & format strings",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import operator\nOPS = {'+': operator.add, '-': operator.sub, '*': operator.mul}\ndef calc(a, sym, b):\n    fn = OPS.get(sym)\n    if fn is None:\n        return 'denied'\n    return fn(a, b)\nprint(calc(6, '*', 7), calc(2, '**', 999))",
+    "choices": [
+      "42 denied",
+      "42 None",
+      "KeyError",
+      "13 denied"
+    ],
+    "answer": 0,
+    "explanation": "Mapping allowed operator symbols to functions in the operator module evaluates simple math without calling eval(). Unlisted operators like '**' (which can cause CPU or memory exhaustion on huge exponents) are rejected cleanly via OPS.get()."
+  },
+  {
+    "id": "py-255",
+    "lang": "python",
+    "topic": "Safe eval & format strings",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "class User:\n    def __init__(self, name, role):\n        self.name = name\n        self.role = role\nu = User('ann', 'viewer')\nprint('{0.__class__.__name__}'.format(u))\nprint('{0.role}'.format(u))",
+    "choices": [
+      "User\nviewer",
+      "{0.__class__.__name__}\nviewer",
+      "AttributeError",
+      "ann\nviewer"
+    ],
+    "answer": 0,
+    "explanation": "str.format() traverses dotted attribute paths inside replacement fields, letting an attacker inspect __class__.__name__ or internal attributes like role. Never pass user-controlled strings as the template argument to str.format()."
+  },
+  {
+    "id": "py-256",
+    "lang": "python",
+    "topic": "Safe eval & format strings",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "from string import Template\ntpl = 'hi $name ({0.__class__.__name__}) $extra'\na = Template(tpl).safe_substitute(name='ann')\nb = '{0.__class__.__name__}'.format('ann')\nprint(a)\nprint(b)",
+    "choices": [
+      "hi ann ({0.__class__.__name__}) $extra\nstr",
+      "hi ann (str) $extra\nstr",
+      "KeyError",
+      "hi ann ({0.__class__.__name__}) \nstr"
+    ],
+    "answer": 0,
+    "explanation": "string.Template expands only simple $name placeholders and treats {0.__class__.__name__} as plain text, blocking attribute traversal. safe_substitute() also leaves missing placeholders like $extra untouched instead of raising KeyError."
+  },
+  {
+    "id": "py-257",
+    "lang": "python",
+    "topic": "Safe eval & format strings",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "a = '{:>10}'.format('ok')\nb = '{:0>5}'.format('ok')\nprint(len(a), a.startswith(' ' * 8), b)",
+    "choices": [
+      "10 True 000ok",
+      "12 True 000ok",
+      "10 False ok000",
+      "2 False 000ok"
+    ],
+    "answer": 0,
+    "explanation": "Format specs like {:>10} right-align the value to width 10 (adding 8 spaces before 'ok'), while {:0>5} pads with zeros to '000ok'. Letting untrusted input supply a format spec such as {:>999999999} enables memory-exhaustion DoS even without attribute access."
+  },
+  {
+    "id": "py-258",
+    "lang": "python",
+    "topic": "Safe eval & format strings",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import json\nraw_ok = '{\"retries\": 3, \"tls\": true}'\nraw_bad = '{\"retries\": __import__(\"os\")}'\ncfg = json.loads(raw_ok)\ntry:\n    json.loads(raw_bad)\n    status = 'loaded'\nexcept json.JSONDecodeError:\n    status = 'rejected'\nprint(cfg['retries'], cfg['tls'], status)",
+    "choices": [
+      "3 True rejected",
+      "3 true rejected",
+      "3 True loaded",
+      "SyntaxError"
+    ],
+    "answer": 0,
+    "explanation": "json.loads() decodes only data types (numbers, booleans, strings, lists, objects) and never runs Python expressions. Embedding __import__('os') in a config string raises json.JSONDecodeError, making JSON a safe replacement for eval() on untrusted config."
+  },
+  {
+    "id": "py-259",
+    "lang": "python",
+    "topic": "Safe eval & format strings",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import ast\nSAFE = (ast.Expression, ast.BinOp, ast.Constant,\n        ast.Add, ast.Mult)\ndef only_math(expr):\n    tree = ast.parse(expr, mode='eval')\n    return all(isinstance(n, SAFE) for n in ast.walk(tree))\nprint(only_math('2 + 3 * 4'), only_math('2 + len(\"a\")'))",
+    "choices": [
+      "True False",
+      "True True",
+      "False False",
+      "SyntaxError"
+    ],
+    "answer": 0,
+    "explanation": "ast.parse(..., mode='eval') builds a syntax tree without executing code, and ast.walk() lets you verify every node against an allow-list. '2 + 3 * 4' uses only Expression, BinOp, Constant, Add, and Mult, whereas '2 + len(\"a\")' adds Call and Name nodes and is rejected."
+  },
+  {
+    "id": "py-260",
+    "lang": "python",
+    "topic": "Safe eval & format strings",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "class Tool:\n    def upper(self, s): return s.upper()\n    def _reset(self, s): return 'wiped'\nALLOWED = {'upper'}\ndef run_op(obj, name, arg):\n    if name not in ALLOWED:\n        return 'denied'\n    return getattr(obj, name)(arg)\nt = Tool()\nprint(run_op(t, 'upper', 'hi'), run_op(t, '_reset', 'hi'))",
+    "choices": [
+      "HI denied",
+      "HI wiped",
+      "AttributeError",
+      "denied denied"
+    ],
+    "answer": 0,
+    "explanation": "Checking name against an explicit ALLOWED set before calling getattr() prevents callers from reaching internal methods like _reset or dunders like __init__. Never pass unvalidated user input directly to getattr()."
+  },
+  {
+    "id": "py-261",
+    "lang": "python",
+    "topic": "Safe eval & format strings",
+    "kind": "order",
+    "prompt": "Put the lines in order for a safe AST arithmetic evaluator that prints 42 bad op.",
+    "lines": [
+      "import ast, operator",
+      "OPS = {ast.Add: operator.add, ast.Mult: operator.mul}",
+      "def safe_eval(expr):",
+      "    node = ast.parse(expr, mode='eval').body",
+      "    if not isinstance(node, ast.BinOp): return 'bad'",
+      "    fn = OPS.get(type(node.op))",
+      "    if fn is None: return 'op'",
+      "    return fn(node.left.value, node.right.value)",
+      "print(safe_eval('6 * 7'), safe_eval('len(\"a\")'), safe_eval('6 - 7'))"
+    ],
+    "explanation": "Parse the expression with ast.parse() without executing it, verify the root is a BinOp before reading node.op, and dispatch through an explicit operator map. Rejecting missing operators with fn is None blocks unsupported operations like '-' before calling fn.",
+    "expectOutput": "42 bad op"
+  },
+  {
+    "id": "py-262",
+    "lang": "python",
+    "topic": "Safe eval & format strings",
+    "kind": "bug",
+    "prompt": "An attacker can still escape this sandbox via ().__class__.__base__.__subclasses__() and run code. Which line is the security bug?",
+    "lines": [
+      "def parse_settings(raw):",
+      "    if not isinstance(raw, str):",
+      "        raise ValueError('expected string')",
+      "    return eval(raw, {'__builtins__': {}}, {})"
+    ],
+    "bugLine": 3,
+    "fixedLine": "    return ast.literal_eval(raw)",
+    "explanation": "Passing {'__builtins__': {}} to eval() is not a safe sandbox because expressions can traverse object.__subclasses__() to reach modules and run arbitrary code. Use ast.literal_eval(raw) or json.loads(raw) to parse untrusted data without evaluating expressions."
+  },
+  {
+    "id": "py-263",
+    "lang": "python",
+    "topic": "Safe eval & format strings",
+    "kind": "bug",
+    "prompt": "Passing '{cfg.secret_key}' as user_tpl leaks sensitive fields from cfg. Which line is the security bug?",
+    "lines": [
+      "def render_banner(user_tpl, cfg):",
+      "    if not isinstance(user_tpl, str):",
+      "        raise ValueError('bad template')",
+      "    return user_tpl.format(cfg=cfg)"
+    ],
+    "bugLine": 3,
+    "fixedLine": "    return string.Template(user_tpl).safe_substitute(app=cfg.app_name)",
+    "explanation": "Calling user_tpl.format(cfg=cfg) lets an attacker traverse attributes on cfg (such as {cfg.secret_key} or {cfg.__init__.__globals__}) to leak secrets. Use string.Template(user_tpl).safe_substitute() and pass only the specific non-sensitive strings the template needs."
+  },
+  {
+    "id": "py-264",
+    "lang": "python",
+    "topic": "Safe eval & format strings",
+    "kind": "bug",
+    "prompt": "Passing '_reset' or '__init__' as user_input invokes internal methods on obj. Which line is the security bug?",
+    "lines": [
+      "def dispatch(obj, user_input):",
+      "    if not isinstance(user_input, str):",
+      "        raise ValueError('bad action')",
+      "    return getattr(obj, user_input)()"
+    ],
+    "bugLine": 3,
+    "fixedLine": "    return {'status': obj.status, 'ping': obj.ping}[user_input]()",
+    "explanation": "Calling getattr(obj, user_input)() without an allow-list exposes private methods, dunders, and unintended actions on obj. Dispatch through an explicit allow-listed mapping (or check an allowed-names set first) so unknown names are rejected."
+  },
+  {
     "id": "py-058",
     "lang": "python",
     "topic": "CTF toolbox",

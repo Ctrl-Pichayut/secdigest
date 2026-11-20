@@ -1,8 +1,15 @@
 'use client';
 
 import React from 'react';
-import { X } from 'lucide-react';
+import { ALargeSmall, X } from 'lucide-react';
 import { SearchIcon } from '@/components/icons';
+import { type TextSize } from '@/lib/feed/useTextSize';
+
+const TEXT_SIZE_META: Record<TextSize, { name: string; label: string }> = {
+  sm: { name: 'Small', label: 'A' },
+  md: { name: 'Medium', label: 'A+' },
+  lg: { name: 'Large', label: 'A++' },
+};
 
 export interface FeedSearchBarProps {
   isDusk: boolean;
@@ -15,6 +22,8 @@ export interface FeedSearchBarProps {
   onSearchInputChange: (value: string) => void;
   onSearchKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => void;
   onClearAndCollapseSearch: () => void;
+  textSize: TextSize;
+  onCycleTextSize: () => void;
 }
 
 export default function FeedSearchBar({
@@ -28,10 +37,15 @@ export default function FeedSearchBar({
   onSearchInputChange,
   onSearchKeyDown,
   onClearAndCollapseSearch,
+  textSize,
+  onCycleTextSize,
 }: FeedSearchBarProps) {
+  const textSizeMeta = TEXT_SIZE_META[textSize] ?? TEXT_SIZE_META.sm;
+
   return (
-    <div role="search" className="flex items-center">
+    <div className="flex items-center justify-between gap-2">
       <div
+        role="search"
         className={`flex items-center rounded-2xl border shadow-xs transition-colors duration-200 ${
           isSearchOpen ? 'w-full' : ''
         } ${
@@ -95,6 +109,26 @@ export default function FeedSearchBar({
           </>
         )}
       </div>
+
+      {!isSearchOpen && (
+        <button
+          type="button"
+          data-testid="btn-text-size"
+          aria-label={`Text size: ${textSizeMeta.name}, tap to change`}
+          title={`Text size: ${textSizeMeta.name}`}
+          onClick={onCycleTextSize}
+          className={`inline-flex items-center justify-center gap-1 min-w-[44px] min-h-[44px] px-2.5 rounded-2xl border shadow-xs transition-colors duration-200 touch-manipulation cursor-pointer shrink-0 ${focusRingClass} ${
+            isDusk
+              ? 'bg-[#2A263A] border-[#3E3852] text-[#D8D2E7] hover:text-[#FAF7F2] hover:bg-[#353048]'
+              : 'bg-[#EDE8DF] border-[#D2C9B8] text-[#4A443E] hover:text-[#2A2623] hover:bg-[#E2DBD0]'
+          }`}
+        >
+          <ALargeSmall aria-hidden="true" className="w-4 h-4 shrink-0" />
+          <span className="text-xs font-bold leading-none">
+            {textSizeMeta.label}
+          </span>
+        </button>
+      )}
     </div>
   );
 }

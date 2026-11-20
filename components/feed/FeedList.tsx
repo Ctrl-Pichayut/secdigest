@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { NewsItem } from '@/lib/types';
 import { type FeedDayGroup } from '@/lib/feedDates';
 import { type FeedTheme } from '@/lib/feed/constants';
+import { type TextSize } from '@/lib/feed/useTextSize';
 import NewsCard from '@/components/NewsCard';
 import FeedSectionHeader from '@/components/feed/FeedSectionHeader';
 
@@ -12,6 +13,7 @@ export interface FeedListProps {
   groups: FeedDayGroup<NewsItem>[];
   isDusk: boolean;
   theme: FeedTheme;
+  textSize?: TextSize;
   onToggleBookmark: (id: string, currentState: boolean) => void;
   onToggleRead: (id: string, currentState: boolean) => void;
 }
@@ -20,6 +22,7 @@ export default function FeedList({
   groups,
   isDusk,
   theme,
+  textSize = 'sm',
   onToggleBookmark,
   onToggleRead,
 }: FeedListProps) {
@@ -55,6 +58,7 @@ export default function FeedList({
               onToggleBookmark={onToggleBookmark}
               onToggleRead={onToggleRead}
               theme={theme}
+              textSize={textSize}
             />
           </motion.div>
         )),

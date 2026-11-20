@@ -6,6 +6,7 @@ import { ChevronDown } from 'lucide-react';
 import { NewsItem } from '@/lib/types';
 import { type FeedDayGroup } from '@/lib/feedDates';
 import { type FeedTheme } from '@/lib/feed/constants';
+import { type TextSize } from '@/lib/feed/useTextSize';
 import { CheckIcon } from '@/components/icons';
 import NewsCard from '@/components/NewsCard';
 import FeedSectionHeader from '@/components/feed/FeedSectionHeader';
@@ -17,6 +18,7 @@ export interface ReadDrawerProps {
   onToggleOpen: () => void;
   isDusk: boolean;
   theme: FeedTheme;
+  textSize?: TextSize;
   focusRingClass: string;
   onToggleBookmark: (id: string, currentState: boolean) => void;
   onToggleRead: (id: string, currentState: boolean) => void;
@@ -29,6 +31,7 @@ export default function ReadDrawer({
   onToggleOpen,
   isDusk,
   theme,
+  textSize = 'sm',
   focusRingClass,
   onToggleBookmark,
   onToggleRead,
@@ -120,6 +123,7 @@ export default function ReadDrawer({
                       onToggleBookmark={onToggleBookmark}
                       onToggleRead={onToggleRead}
                       theme={theme}
+                      textSize={textSize}
                     />
                   </motion.div>
                 )),

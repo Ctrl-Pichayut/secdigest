@@ -650,6 +650,133 @@ async function main() {
       feedOverflowError = err instanceof Error ? err : new Error(String(err));
     }
 
+    await runCheck(
+      'Text size control cycles to Large, persists across reload, and keeps 360x780 layout intact',
+      async () => {
+        const textSizePage = await context.newPage();
+        const textSizeConsoleErrors = [];
+        const textSizePageErrors = [];
+
+        textSizePage.on('console', (msg) => {
+          if (msg.type() === 'error') {
+            const text = msg.text();
+            if (!isIgnoredConsoleError(text)) {
+              textSizeConsoleErrors.push(text);
+            }
+          }
+        });
+
+        textSizePage.on('pageerror', (err) => {
+          textSizePageErrors.push(err instanceof Error ? err.message : String(err));
+        });
+
+        try {
+          await textSizePage.goto(`${BASE_URL}/`, { waitUntil: 'networkidle', timeout: 15000 });
+          const firstCardTitle = textSizePage.locator('[data-testid^="news-card-"] h2').first();
+          await firstCardTitle.waitFor({ state: 'visible', timeout: 10000 });
+
+          const textSizeBtn = textSizePage.locator('[data-testid="btn-text-size"]');
+          await textSizeBtn.waitFor({ state: 'visible', timeout: 5000 });
+
+          const initialLabel = (await textSizeBtn.textContent())?.trim() || '';
+          if (initialLabel !== 'A') {
+            throw new Error(`Expected initial text size label "A", got "${initialLabel}"`);
+          }
+
+          const initialFontSize = await firstCardTitle.evaluate((el) =>
+            parseFloat(window.getComputedStyle(el).fontSize)
+          );
+          if (!Number.isFinite(initialFontSize) || initialFontSize <= 0) {
+            throw new Error(`Could not read initial card title font-size: ${initialFontSize}`);
+          }
+
+          // Tap twice: sm -> md -> lg
+          await textSizeBtn.click();
+          await textSizeBtn.click();
+
+          await textSizePage.waitForFunction(
+            () => {
+              const btn = document.querySelector('[data-testid="btn-text-size"]');
+              return Boolean(btn) && (btn.textContent || '').trim() === 'A++';
+            },
+            undefined,
+            { timeout: 5000 }
+          );
+
+          const lgAriaLabel = await textSizeBtn.getAttribute('aria-label');
+          if (lgAriaLabel !== 'Text size: Large, tap to change') {
+            throw new Error(
+              `Expected aria-label "Text size: Large, tap to change", got "${lgAriaLabel}"`
+            );
+          }
+
+          const lgFontSize = await firstCardTitle.evaluate((el) =>
+            parseFloat(window.getComputedStyle(el).fontSize)
+          );
+          if (!Number.isFinite(lgFontSize) || lgFontSize <= initialFontSize) {
+            throw new Error(
+              `Expected card title font-size to grow at lg (before=${initialFontSize}px, after=${lgFontSize}px)`
+            );
+          }
+
+          const storedSize = await textSizePage.evaluate(() =>
+            window.localStorage.getItem('secdigest.textSize.v1')
+          );
+          if (storedSize !== 'lg') {
+            throw new Error(
+              `Expected localStorage secdigest.textSize.v1 to be "lg", got "${storedSize}"`
+            );
+          }
+
+          await textSizePage.reload({ waitUntil: 'networkidle', timeout: 15000 });
+          await firstCardTitle.waitFor({ state: 'visible', timeout: 10000 });
+
+          await textSizePage.waitForFunction(
+            () => {
+              const btn = document.querySelector('[data-testid="btn-text-size"]');
+              return Boolean(btn) && (btn.textContent || '').trim() === 'A++';
+            },
+            undefined,
+            { timeout: 5000 }
+          );
+
+          const persistedFontSize = await firstCardTitle.evaluate((el) =>
+            parseFloat(window.getComputedStyle(el).fontSize)
+          );
+          if (persistedFontSize !== lgFontSize) {
+            throw new Error(
+              `Expected persisted lg card title font-size ${lgFontSize}px after reload, got ${persistedFontSize}px`
+            );
+          }
+
+          await checkNoHorizontalOverflow(
+            textSizePage,
+            'Feed (/) [textSize=lg]',
+            [{ width: 360, height: 780 }],
+            { checkNewsCardActionBar: true }
+          );
+
+          if (textSizeConsoleErrors.length > 0 || textSizePageErrors.length > 0) {
+            throw new Error(
+              `Console/page errors detected during text size check: ${JSON.stringify({
+                consoleErrors: textSizeConsoleErrors,
+                pageErrors: textSizePageErrors,
+              })}`
+            );
+          }
+        } finally {
+          try {
+            await textSizePage.evaluate(() => {
+              window.localStorage.removeItem('secdigest.textSize.v1');
+            });
+          } catch {
+            // Ignore cleanup errors if the page failed to load.
+          }
+          await textSizePage.close();
+        }
+      }
+    );
+
     await runCheck('Search narrows feed to one card and clear restores all unread cards', async () => {
       await page.locator('[data-testid="btn-search-toggle"]').click();
       const input = page.locator('[data-testid="feed-search-input"]');

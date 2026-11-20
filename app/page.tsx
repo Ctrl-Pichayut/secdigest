@@ -6,6 +6,7 @@ import { useAllProgress, isDone } from '@/lib/ctf/progress';
 import { WRITEUPS } from '@/lib/ctf/writeups';
 import TodayPracticeCard from '@/components/practice/TodayPracticeCard';
 import { useFeed } from '@/lib/feed/useFeed';
+import { useTextSize } from '@/lib/feed/useTextSize';
 import FeedHeader from '@/components/feed/FeedHeader';
 import FilterTabs from '@/components/feed/FilterTabs';
 import FeedSearchBar from '@/components/feed/FeedSearchBar';
@@ -23,6 +24,7 @@ export default function HomePage() {
 
   // Shared reading-theme store - stays in sync with the Solved CTF pages.
   const { theme, isDusk, toggle: toggleTheme } = useTheme();
+  const { size: textSize, cycle: cycleTextSize } = useTextSize();
 
   // Learning progress across the interactive labs (for the header tally).
   const allProgress = useAllProgress();
@@ -92,6 +94,8 @@ export default function HomePage() {
             onSearchInputChange={feed.setSearchInput}
             onSearchKeyDown={feed.handleSearchKeyDown}
             onClearAndCollapseSearch={feed.handleClearAndCollapseSearch}
+            textSize={textSize}
+            onCycleTextSize={cycleTextSize}
           />
 
           {/* Daily coding practice, riding on the morning-feed habit */}
@@ -140,6 +144,7 @@ export default function HomePage() {
               groups={feed.unreadGroups}
               isDusk={isDusk}
               theme={theme}
+              textSize={textSize}
               onToggleBookmark={feed.handleToggleBookmark}
               onToggleRead={feed.handleToggleRead}
             />
@@ -154,6 +159,7 @@ export default function HomePage() {
               onToggleOpen={feed.handleToggleReadDrawer}
               isDusk={isDusk}
               theme={theme}
+              textSize={textSize}
               focusRingClass={focusRingClass}
               onToggleBookmark={feed.handleToggleBookmark}
               onToggleRead={feed.handleToggleRead}
