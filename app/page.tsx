@@ -55,6 +55,7 @@ export default function HomePage() {
           clientTime={feed.clientTime}
           freshness={feed.freshness}
           isOffline={feed.isOffline}
+          pendingSyncCount={feed.pendingSyncCount}
           labsDone={labsDone}
           totalLabs={WRITEUPS.length}
           refreshing={feed.refreshing}

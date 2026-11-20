@@ -3,7 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { FlaskConical, RefreshCw } from 'lucide-react';
+import { CloudOff, FlaskConical, RefreshCw } from 'lucide-react';
 import {
   BoltIcon,
   CheckIcon,
@@ -24,6 +24,7 @@ export interface FeedHeaderProps {
   clientTime: ClientTimeInfo | null;
   freshness: FeedFreshness | null;
   isOffline: boolean;
+  pendingSyncCount: number;
   labsDone: number;
   totalLabs: number;
   refreshing: boolean;
@@ -44,6 +45,7 @@ export default function FeedHeader({
   clientTime,
   freshness,
   isOffline,
+  pendingSyncCount,
   labsDone,
   totalLabs,
   refreshing,
@@ -182,26 +184,60 @@ export default function FeedHeader({
             ? `${clientTime.formattedDate} • ${clientTime.subtitle}`
             : DEFAULT_SUBTITLE}
         </p>
-        {freshness && (
-          <p
-            data-testid="feed-freshness"
-            className={`text-[11px] leading-4 ${
-              freshness.isStale
-                ? isDusk
-                  ? 'text-amber-300 font-semibold'
-                  : 'text-amber-800 font-semibold'
-                : isDusk
-                ? 'text-[#B3ACC5] font-medium'
-                : 'text-[#6A635C] font-medium'
-            }`}
-          >
-            {freshness.text}
-          </p>
+        {(freshness || pendingSyncCount > 0) && (
+          <div className="flex items-center gap-1.5 min-w-0 text-[11px] leading-4">
+            {freshness && (
+              <span
+                data-testid="feed-freshness"
+                className={`min-w-0 truncate ${
+                  freshness.isStale
+                    ? isDusk
+                      ? 'text-amber-300 font-semibold'
+                      : 'text-amber-800 font-semibold'
+                    : isDusk
+                    ? 'text-[#B3ACC5] font-medium'
+                    : 'text-[#6A635C] font-medium'
+                }`}
+              >
+                {freshness.text}
+              </span>
+            )}
+            {freshness && pendingSyncCount > 0 && (
+              <span
+                aria-hidden="true"
+                className={`shrink-0 ${
+                  isDusk ? 'text-[#B3ACC5]' : 'text-[#6A635C]'
+                }`}
+              >
+                •
+              </span>
+            )}
+            {pendingSyncCount > 0 && (
+              <span
+                data-testid="pending-sync-indicator"
+                role="status"
+                aria-live="polite"
+                className={`inline-flex items-center gap-1 min-w-0 overflow-hidden font-medium ${
+                  isDusk ? 'text-[#B3ACC5]' : 'text-[#6A635C]'
+                }`}
+              >
+                {isOffline ? (
+                  <CloudOff aria-hidden="true" className="w-3 h-3 shrink-0" />
+                ) : (
+                  <RefreshCw aria-hidden="true" className="w-3 h-3 shrink-0" />
+                )}
+                <span className="truncate">
+                  {pendingSyncCount}{' '}
+                  {pendingSyncCount === 1 ? 'change' : 'changes'} waiting to sync
+                </span>
+              </span>
+            )}
+          </div>
         )}
         {isOffline && (
           <p
             data-testid="offline-notice"
-            className={`text-[11px] leading-4 font-medium ${
+            className={`truncate text-[11px] leading-4 font-medium ${
               isDusk ? 'text-[#B3ACC5]' : 'text-[#6A635C]'
             }`}
           >

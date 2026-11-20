@@ -461,6 +461,8 @@ async function main() {
       pageErrors.push(err instanceof Error ? err.message : String(err));
     });
 
+    let abortNewsItemPatch = false;
+
     const handleSupabaseRoute = async (route) => {
       const req = route.request();
       const method = req.method().toUpperCase();
@@ -506,6 +508,15 @@ async function main() {
       }
 
       if (method === 'PATCH' || method === 'POST' || method === 'PUT') {
+        if (
+          abortNewsItemPatch &&
+          method === 'PATCH' &&
+          url.pathname === '/rest/v1/news_items'
+        ) {
+          await route.abort('internetdisconnected');
+          return;
+        }
+
         let parsedBody = null;
         const rawBody = req.postData();
         if (rawBody) {
@@ -1040,6 +1051,209 @@ async function main() {
         await autoDismissPage.close();
       }
     });
+
+    await runCheck(
+      'Offline Mark Read queues patch, shows pending sync indicator, and flushes on online',
+      async () => {
+        const offlinePage = await newIsolatedPage();
+        const offlinePageErrors = [];
+
+        offlinePage.on('pageerror', (err) => {
+          offlinePageErrors.push(err instanceof Error ? err.message : String(err));
+        });
+
+        try {
+          await offlinePage.setViewportSize({ width: 360, height: 780 });
+          await offlinePage.goto(`${BASE_URL}/`, { waitUntil: 'networkidle', timeout: 15000 });
+          await offlinePage.locator('[data-testid="news-card-news-1"]').waitFor({
+            state: 'visible',
+            timeout: 10000,
+          });
+
+          abortNewsItemPatch = true;
+          await offlinePage.locator('[data-testid="btn-read-news-1"]').click();
+
+          await offlinePage.locator('[data-testid="news-card-news-1"]').waitFor({
+            state: 'detached',
+            timeout: 5000,
+          });
+
+          // Confirm the card stays read (does not revert back to the unread list after 1s).
+          await offlinePage.waitForTimeout(1000);
+          const news1Count = await offlinePage
+            .locator('[data-testid="news-card-news-1"]')
+            .count();
+          if (news1Count !== 0) {
+            throw new Error(
+              `Expected news-1 to stay out of the unread list after offline Mark Read, found ${news1Count}`
+            );
+          }
+
+          const syncIndicator = offlinePage.locator('[data-testid="pending-sync-indicator"]');
+          await syncIndicator.waitFor({ state: 'visible', timeout: 5000 });
+          const indicatorText = (await syncIndicator.textContent())?.trim() || '';
+          if (!indicatorText.includes('1 change waiting to sync')) {
+            throw new Error(
+              `Expected header sync indicator to show "1 change waiting to sync", got "${indicatorText}"`
+            );
+          }
+
+          const freshnessBox = await offlinePage
+            .locator('[data-testid="feed-freshness"]')
+            .boundingBox();
+          const indicatorBox = await syncIndicator.boundingBox();
+          if (!freshnessBox || !indicatorBox) {
+            throw new Error('Could not measure freshness/sync indicator bounding boxes at 360px');
+          }
+          if (Math.abs(freshnessBox.y - indicatorBox.y) > 2) {
+            throw new Error(
+              `Expected sync indicator on same line as freshness at 360px (freshness.y=${freshnessBox.y}, indicator.y=${indicatorBox.y})`
+            );
+          }
+          if (indicatorBox.x + indicatorBox.width > 360 + MAX_RIGHT_OVERFLOW_PX) {
+            throw new Error(
+              `Sync indicator overflows 360px viewport: ${JSON.stringify(indicatorBox)}`
+            );
+          }
+
+          const queuedEntries = await offlinePage.evaluate(() => {
+            const raw = window.localStorage.getItem('secdigest.pendingPatches.v1');
+            return raw ? JSON.parse(raw) : [];
+          });
+          if (
+            !Array.isArray(queuedEntries) ||
+            !queuedEntries.some((entry) => entry && entry.id === 'news-1' && entry.is_read === true)
+          ) {
+            throw new Error(
+              `Expected localStorage queue to contain news-1 is_read=true, got ${JSON.stringify(queuedEntries)}`
+            );
+          }
+
+          abortNewsItemPatch = false;
+          const writesBeforeOnline = recordedWrites.length;
+          await offlinePage.evaluate(() => {
+            window.dispatchEvent(new Event('online'));
+          });
+
+          await waitForWrite(
+            recordedWrites,
+            writesBeforeOnline,
+            (w) => {
+              if (
+                w.method !== 'PATCH' ||
+                w.pathname !== '/rest/v1/news_items' ||
+                !w.body ||
+                w.body.is_read !== true
+              ) {
+                return false;
+              }
+              if (w.searchParams.id === 'eq.news-1') return true;
+              const ids = parseInParamIds(w.searchParams.id);
+              return Array.isArray(ids) && ids.includes('news-1');
+            },
+            5000,
+            'PATCH /rest/v1/news_items with is_read=true for news-1 after online event'
+          );
+
+          await syncIndicator.waitFor({ state: 'detached', timeout: 5000 });
+
+          const remainingEntries = await offlinePage.evaluate(() => {
+            const raw = window.localStorage.getItem('secdigest.pendingPatches.v1');
+            return raw ? JSON.parse(raw) : [];
+          });
+          if (!Array.isArray(remainingEntries) || remainingEntries.length !== 0) {
+            throw new Error(
+              `Expected localStorage queue to be empty after flush, got ${JSON.stringify(remainingEntries)}`
+            );
+          }
+
+          if (offlinePageErrors.length > 0) {
+            throw new Error(
+              `Page errors detected during offline sync queue check: ${JSON.stringify(offlinePageErrors)}`
+            );
+          }
+        } finally {
+          abortNewsItemPatch = false;
+          await offlinePage.close();
+        }
+      }
+    );
+
+    await runCheck(
+      'Reload while queue holds news-1 read=true keeps news-1 out of unread list despite stale GET',
+      async () => {
+        const reloadPage = await newIsolatedPage();
+        const reloadPageErrors = [];
+
+        reloadPage.on('pageerror', (err) => {
+          reloadPageErrors.push(err instanceof Error ? err.message : String(err));
+        });
+
+        try {
+          await reloadPage.goto(`${BASE_URL}/`, { waitUntil: 'networkidle', timeout: 15000 });
+          await reloadPage.locator('[data-testid="news-card-news-1"]').waitFor({
+            state: 'visible',
+            timeout: 10000,
+          });
+
+          abortNewsItemPatch = true;
+          await reloadPage.evaluate(() => {
+            window.localStorage.setItem(
+              'secdigest.pendingPatches.v1',
+              JSON.stringify([{ id: 'news-1', is_read: true, queuedAt: Date.now() }])
+            );
+          });
+
+          const getsBeforeReload = recordedNewsGets.length;
+          await reloadPage.reload({ waitUntil: 'networkidle', timeout: 15000 });
+
+          await reloadPage.locator('[data-testid="news-card-news-2"]').waitFor({
+            state: 'visible',
+            timeout: 10000,
+          });
+
+          if (recordedNewsGets.length <= getsBeforeReload) {
+            throw new Error('Expected mocked GET /rest/v1/news_items during reload');
+          }
+
+          const news1Count = await reloadPage
+            .locator('[data-testid="news-card-news-1"]')
+            .count();
+          if (news1Count !== 0) {
+            throw new Error(
+              `Expected news-1 to stay out of the unread list after reload with queued read patch, found ${news1Count}`
+            );
+          }
+
+          const unreadCardCount = await reloadPage
+            .locator('[data-testid^="news-card-"]')
+            .count();
+          if (unreadCardCount !== 3) {
+            throw new Error(
+              `Expected 3 unread cards after reload with news-1 queued read, found ${unreadCardCount}`
+            );
+          }
+
+          const syncIndicator = reloadPage.locator('[data-testid="pending-sync-indicator"]');
+          await syncIndicator.waitFor({ state: 'visible', timeout: 5000 });
+          const indicatorText = (await syncIndicator.textContent())?.trim() || '';
+          if (!indicatorText.includes('1 change waiting to sync')) {
+            throw new Error(
+              `Expected sync indicator to remain visible after offline reload, got "${indicatorText}"`
+            );
+          }
+
+          if (reloadPageErrors.length > 0) {
+            throw new Error(
+              `Page errors detected during reload sync queue check: ${JSON.stringify(reloadPageErrors)}`
+            );
+          }
+        } finally {
+          abortNewsItemPatch = false;
+          await reloadPage.close();
+        }
+      }
+    );
 
     await runCheck('Practice page renders progress, Next up chip, streak panel, and starts 2-minute session', async () => {
       await page.goto(`${BASE_URL}/practice`, { waitUntil: 'networkidle', timeout: 15000 });

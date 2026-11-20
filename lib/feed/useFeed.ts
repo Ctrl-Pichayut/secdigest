@@ -18,6 +18,18 @@ import {
   getErrorMessage,
   mergeAndSortNewsItems,
 } from '@/lib/feed/helpers';
+import {
+  applyPendingPatches,
+  clearQueuedFields,
+  enqueuePatch,
+  groupPendingPatches,
+  isNetworkFailure,
+  loadQueue,
+  removeMatchingPatchFields,
+  saveQueue,
+  type PendingPatch,
+  type PendingPatchFields,
+} from '@/lib/feed/syncQueue';
 
 export interface PendingUndo {
   ids: string[];
@@ -56,11 +68,87 @@ export function useFeed() {
   const hasActiveSearchQueryRef = useRef<boolean>(false);
   const undoKeyRef = useRef<number>(0);
   const handledUndoKeyRef = useRef<number | null>(null);
+  const pendingQueueRef = useRef<PendingPatch[]>([]);
+  const isFlushingRef = useRef<boolean>(false);
 
   // Populate time-dependent greeting, date, day headers, and freshness only after
   // mount so prerendered HTML matches the initial client render (avoids hydration #418).
   const [now, setNow] = useState<Date | null>(null);
   const [isOffline, setIsOffline] = useState<boolean>(false);
+  const [pendingSyncCount, setPendingSyncCount] = useState<number>(0);
+
+  const syncQueueState = useCallback((nextQueue: PendingPatch[]) => {
+    pendingQueueRef.current = nextQueue;
+    saveQueue(nextQueue);
+    setPendingSyncCount(nextQueue.length);
+  }, []);
+
+  const clearQueuedFieldsForIds = useCallback(
+    (
+      ids: readonly string[],
+      coveredFields: PendingPatchFields,
+      maxQueuedAt: number
+    ) => {
+      const current = pendingQueueRef.current;
+      if (current.length === 0 || ids.length === 0) return;
+
+      const next = clearQueuedFields(current, ids, coveredFields, maxQueuedAt);
+      const changed =
+        next.length !== current.length ||
+        next.some((entry, idx) => entry !== current[idx]);
+      if (changed) {
+        syncQueueState(next);
+      }
+    },
+    [syncQueueState]
+  );
+
+  const flushQueue = useCallback(async () => {
+    if (isFlushingRef.current) return;
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+
+    const snapshot = pendingQueueRef.current;
+    if (snapshot.length === 0) return;
+
+    isFlushingRef.current = true;
+    try {
+      const batches = groupPendingPatches(snapshot);
+
+      for (const batch of batches) {
+        try {
+          const { error: updateError } = await supabase
+            .from('news_items')
+            .update(batch.fields)
+            .in('id', batch.ids);
+
+          if (updateError) throw updateError;
+
+          const remaining = removeMatchingPatchFields(
+            pendingQueueRef.current,
+            batch.ids,
+            batch.fields
+          );
+          syncQueueState(remaining);
+        } catch (err) {
+          const online =
+            typeof navigator !== 'undefined' ? navigator.onLine : true;
+          if (isNetworkFailure(err, online)) {
+            return;
+          }
+
+          console.error('Failed to sync queued feed changes to Supabase:', err);
+          const remaining = removeMatchingPatchFields(
+            pendingQueueRef.current,
+            batch.ids,
+            batch.fields
+          );
+          syncQueueState(remaining);
+        }
+      }
+    } finally {
+      isFlushingRef.current = false;
+    }
+  }, [syncQueueState]);
 
   useEffect(() => {
     setNow(new Date());
@@ -109,7 +197,8 @@ export function useFeed() {
 
       if (epoch !== feedEpochRef.current) return;
 
-      setItems((data as NewsItem[]) || []);
+      const serverRows = (data as NewsItem[]) || [];
+      setItems(applyPendingPatches(serverRows, pendingQueueRef.current));
       setOlderThan(cutoffIso);
       setWindowDays(WINDOW_STEP_DAYS);
       setConsecutiveEmptyPages(0);
@@ -163,7 +252,10 @@ export function useFeed() {
 
       if (epoch !== feedEpochRef.current) return;
 
-      const incoming = (data as NewsItem[]) || [];
+      const incoming = applyPendingPatches(
+        (data as NewsItem[]) || [],
+        pendingQueueRef.current
+      );
       if (incoming.length > 0) {
         setItems((prev) => mergeAndSortNewsItems(prev, incoming));
         setConsecutiveEmptyPages(0);
@@ -186,8 +278,21 @@ export function useFeed() {
   }, [olderThan, loadingOlder, noOlderItems]);
 
   useEffect(() => {
-    loadNews();
-  }, [loadNews]);
+    let cancelled = false;
+    const initialQueue = loadQueue();
+    pendingQueueRef.current = initialQueue;
+    setPendingSyncCount(initialQueue.length);
+
+    void loadNews().then(() => {
+      if (!cancelled) {
+        void flushQueue();
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [loadNews, flushQueue]);
 
   // Keep a ref of whether the user has an active search query open so resume listeners stay stable
   useEffect(() => {
@@ -196,7 +301,7 @@ export function useFeed() {
       (searchInput.trim().length > 0 || debouncedQuery.trim().length > 0);
   }, [isSearchOpen, searchInput, debouncedQuery]);
 
-  // Auto-refresh stale feed when resuming the PWA or regaining connectivity
+  // Flush queued writes and auto-refresh stale feed when resuming or regaining connectivity
   useEffect(() => {
     const isLastSuccessStale = () => {
       const lastSuccessAt = lastSuccessAtRef.current;
@@ -219,15 +324,19 @@ export function useFeed() {
 
     const handleVisibilityChange = () => {
       if (document.visibilityState !== 'visible') return;
-      if (isLastSuccessStale()) {
-        maybeAutoRefresh();
-      }
+      void flushQueue().then(() => {
+        if (isLastSuccessStale()) {
+          maybeAutoRefresh();
+        }
+      });
     };
 
     const handleOnline = () => {
-      if (lastLoadFailedRef.current || isLastSuccessStale()) {
-        maybeAutoRefresh();
-      }
+      void flushQueue().then(() => {
+        if (lastLoadFailedRef.current || isLastSuccessStale()) {
+          maybeAutoRefresh();
+        }
+      });
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -236,7 +345,7 @@ export function useFeed() {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('online', handleOnline);
     };
-  }, [loadNews]);
+  }, [loadNews, flushQueue]);
 
   // Debounce search input by 150ms
   useEffect(() => {
@@ -286,6 +395,7 @@ export function useFeed() {
   // Optimistic Bookmark Toggle
   const handleToggleBookmark = async (id: string, currentState: boolean) => {
     const nextState = !currentState;
+    const writeStartedAt = Date.now();
     setItems((prev) =>
       prev.map((item) =>
         item.id === id ? { ...item, is_bookmarked: nextState } : item
@@ -299,7 +409,21 @@ export function useFeed() {
         .eq('id', id);
 
       if (updateError) throw updateError;
+
+      clearQueuedFieldsForIds([id], { is_bookmarked: nextState }, writeStartedAt);
     } catch (err) {
+      const online = typeof navigator !== 'undefined' ? navigator.onLine : true;
+      if (isNetworkFailure(err, online)) {
+        const nextQueue = enqueuePatch(
+          pendingQueueRef.current,
+          id,
+          { is_bookmarked: nextState },
+          Date.now()
+        );
+        syncQueueState(nextQueue);
+        return;
+      }
+
       console.error('Failed to update bookmark in Supabase:', err);
       // Revert on failure
       setItems((prev) =>
@@ -314,6 +438,7 @@ export function useFeed() {
   const handleToggleRead = async (id: string, currentState: boolean) => {
     const nextState = !currentState;
     const undoKey = nextState ? ++undoKeyRef.current : null;
+    const writeStartedAt = Date.now();
 
     setItems((prev) =>
       prev.map((item) =>
@@ -336,7 +461,21 @@ export function useFeed() {
         .eq('id', id);
 
       if (updateError) throw updateError;
+
+      clearQueuedFieldsForIds([id], { is_read: nextState }, writeStartedAt);
     } catch (err) {
+      const online = typeof navigator !== 'undefined' ? navigator.onLine : true;
+      if (isNetworkFailure(err, online)) {
+        const nextQueue = enqueuePatch(
+          pendingQueueRef.current,
+          id,
+          { is_read: nextState },
+          Date.now()
+        );
+        syncQueueState(nextQueue);
+        return;
+      }
+
       console.error('Failed to update read status in Supabase:', err);
       // Revert on failure
       setItems((prev) =>
@@ -367,6 +506,7 @@ export function useFeed() {
 
     const unreadIds = unreadFiltered.map((i) => i.id);
     const undoKey = ++undoKeyRef.current;
+    const writeStartedAt = Date.now();
 
     setItems((prev) =>
       prev.map((item) =>
@@ -386,7 +526,20 @@ export function useFeed() {
         .in('id', unreadIds);
 
       if (updateError) throw updateError;
+
+      clearQueuedFieldsForIds(unreadIds, { is_read: true }, writeStartedAt);
     } catch (err) {
+      const online = typeof navigator !== 'undefined' ? navigator.onLine : true;
+      if (isNetworkFailure(err, online)) {
+        const nowMs = Date.now();
+        let nextQueue = pendingQueueRef.current;
+        for (const id of unreadIds) {
+          nextQueue = enqueuePatch(nextQueue, id, { is_read: true }, nowMs);
+        }
+        syncQueueState(nextQueue);
+        return;
+      }
+
       console.error('Failed to mark all as read:', err);
       setPendingUndo((prev) => (prev && prev.key === undoKey ? null : prev));
       loadNews();
@@ -410,6 +563,7 @@ export function useFeed() {
 
     if (idsToRestore.length === 0) return;
 
+    const writeStartedAt = Date.now();
     const restoreSet = new Set(idsToRestore);
     setItems((prev) =>
       prev.map((item) =>
@@ -424,11 +578,24 @@ export function useFeed() {
         .in('id', idsToRestore);
 
       if (updateError) throw updateError;
+
+      clearQueuedFieldsForIds(idsToRestore, { is_read: false }, writeStartedAt);
     } catch (err) {
+      const online = typeof navigator !== 'undefined' ? navigator.onLine : true;
+      if (isNetworkFailure(err, online)) {
+        const nowMs = Date.now();
+        let nextQueue = pendingQueueRef.current;
+        for (const id of idsToRestore) {
+          nextQueue = enqueuePatch(nextQueue, id, { is_read: false }, nowMs);
+        }
+        syncQueueState(nextQueue);
+        return;
+      }
+
       console.error('Failed to undo read status in Supabase:', err);
       loadNews();
     }
-  }, [pendingUndo, items, loadNews]);
+  }, [pendingUndo, items, loadNews, clearQueuedFieldsForIds, syncQueueState]);
 
   const unreadItems = useMemo(
     () => filteredItems.filter((i) => !i.is_read),
@@ -515,6 +682,7 @@ export function useFeed() {
     searchToggleRef,
     clientTime,
     isOffline,
+    pendingSyncCount,
     freshness,
     filteredItems,
     unreadItems,

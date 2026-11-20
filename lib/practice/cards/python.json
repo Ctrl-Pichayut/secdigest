@@ -3472,6 +3472,403 @@
     "explanation": "Hard-coding API keys in source files leaks them to git history, CI logs, and anyone with repo access, while complicating key rotation. Load secrets at runtime from os.environ['API_KEY'] or a dedicated secret manager."
   },
   {
+    "id": "py-217",
+    "lang": "python",
+    "topic": "IAM policy logic",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "def norm(v):\n    return [v] if isinstance(v, str) else list(v)\nstmt = {\n    'Action': 's3:GetObject',\n    'Resource': 'arn:aws:s3:::logs/*',\n}\na = 's3' in stmt['Action']\nb = 's3' in norm(stmt['Action'])\nprint(a, b, len(norm(stmt['Resource'])))",
+    "choices": [
+      "True False 1",
+      "False False 1",
+      "True True 1",
+      "True False 19"
+    ],
+    "answer": 0,
+    "explanation": "AWS IAM policies allow Action and Resource to be either a single string or a list of strings. Checking 'in' on a raw string performs a substring match ('s3' in 's3:GetObject' is True), whereas normalizing both fields to lists checks whole entries and gives length 1 for the Resource ARN."
+  },
+  {
+    "id": "py-218",
+    "lang": "python",
+    "topic": "IAM policy logic",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "from fnmatch import fnmatchcase\narn = 'arn:aws:s3:::logs/Prod/a.txt'\na = fnmatchcase('s3:GetObject', 's3:Get*')\nb = fnmatchcase(arn, 'arn:aws:s3:::logs/Prod/*')\nc = fnmatchcase(arn, 'arn:aws:s3:::logs/prod/*')\nd = fnmatchcase('arn:aws:s3:::logs', 'arn:aws:s3:::logs/*')\nprint(a, b, c, d)",
+    "choices": [
+      "True True False False",
+      "True True True False",
+      "True True False True",
+      "True False False False"
+    ],
+    "answer": 0,
+    "explanation": "fnmatchcase() always matches case-sensitively across platforms, whereas fnmatch.fnmatch() depends on the OS and silently ignores case on Windows. The ARN wildcard 'arn:aws:s3:::logs/Prod/*' matches object keys under Prod/ but misses lowercase 'prod/' and the bare bucket ARN without a slash."
+  },
+  {
+    "id": "py-219",
+    "lang": "python",
+    "topic": "IAM policy logic",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "from fnmatch import fnmatchcase\nstmts = [\n    {'Effect': 'Allow', 'Action': 's3:*'},\n    {'Effect': 'Deny', 'Action': 's3:Delete*'},\n]\ndef check(act):\n    hits = {s['Effect'] for s in stmts\n            if fnmatchcase(act, s['Action'])}\n    return 'Allow' in hits and 'Deny' not in hits\nprint(check('s3:DeleteObject'), check('s3:GetObject'))",
+    "choices": [
+      "False True",
+      "True True",
+      "False False",
+      "True False"
+    ],
+    "answer": 0,
+    "explanation": "IAM evaluates every matching statement rather than stopping at the first match, and any explicit Deny overrides every Allow. 's3:DeleteObject' matches both statements so 'Deny' wins, while 's3:GetObject' matches only the Allow statement."
+  },
+  {
+    "id": "py-220",
+    "lang": "python",
+    "topic": "IAM policy logic",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "from fnmatch import fnmatchcase\ns = {'Effect': 'Allow', 'Action': 's3:Get*',\n     'Resource': 'arn:aws:s3:::pub/*'}\ndef decide(act, res):\n    ok = (fnmatchcase(act, s['Action'])\n          and fnmatchcase(res, s['Resource']))\n    if not ok: return 'implicit_deny'\n    return 'explicit_deny' if s['Effect'] == 'Deny' else 'allow'\nprint(decide('s3:GetObject', 'arn:aws:s3:::pub/a'))\nprint(decide('s3:GetObject', 'arn:aws:s3:::priv/a'))",
+    "choices": [
+      "allow\nimplicit_deny",
+      "allow\nexplicit_deny",
+      "allow\nallow",
+      "implicit_deny\nimplicit_deny"
+    ],
+    "answer": 0,
+    "explanation": "A statement only applies when both Action and Resource match. Because IAM is default-deny, any request that matches no Allow statement results in an implicit deny rather than an explicit deny."
+  },
+  {
+    "id": "py-221",
+    "lang": "python",
+    "topic": "IAM policy logic",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "from fnmatch import fnmatchcase\nstmt = {'Effect': 'Deny', 'NotAction': ['sts:Get*', 'iam:List*']}\ndef denied(act):\n    exempt = any(fnmatchcase(act, p) for p in stmt['NotAction'])\n    return stmt['Effect'] == 'Deny' and not exempt\nacts = ['sts:GetCallerIdentity', 'iam:ListUsers', 's3:GetObject']\nprint([denied(a) for a in acts])",
+    "choices": [
+      "[False, False, True]",
+      "[True, True, False]",
+      "[False, True, True]",
+      "[True, False, True]"
+    ],
+    "answer": 0,
+    "explanation": "NotAction matches every action that does NOT match any listed pattern. Paired with Effect 'Deny', it creates a guardrail that blocks everything except the listed exemptions ('sts:Get*' and 'iam:List*'), so only 's3:GetObject' is denied."
+  },
+  {
+    "id": "py-222",
+    "lang": "python",
+    "topic": "IAM policy logic",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "cond = {'StringEquals': {'env': 'prod', 'mfa': 'true'}}\ndef cond_ok(c, ctx):\n    req = c.get('StringEquals', {})\n    return all(k in ctx and ctx[k] == v for k, v in req.items())\nctxs = [\n    {'env': 'prod', 'mfa': 'true'},\n    {'env': 'prod'},\n    {'env': 'dev', 'mfa': 'true'},\n]\nprint([cond_ok(cond, x) for x in ctxs])",
+    "choices": [
+      "[True, False, False]",
+      "[True, True, False]",
+      "[True, False, True]",
+      "[True, True, True]"
+    ],
+    "answer": 0,
+    "explanation": "In IAM, multiple keys inside a StringEquals block are combined with logical AND, so every required key must be present and equal its expected value. Missing 'mfa' in the second context and mismatched 'env' in the third both evaluate to False."
+  },
+  {
+    "id": "py-223",
+    "lang": "python",
+    "topic": "IAM policy logic",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "def is_open(s):\n    if s.get('Effect') != 'Allow': return False\n    p = s.get('Principal')\n    v = p.get('AWS', []) if isinstance(p, dict) else p\n    return '*' in ([v] if isinstance(v, str) else v)\nstmts = [\n    {'Effect': 'Allow', 'Principal': {'AWS': ['111122223333', '*']}},\n    {'Effect': 'Allow', 'Principal': {'AWS': '111122223333'}},\n    {'Effect': 'Deny', 'Principal': '*'}]\nprint([is_open(s) for s in stmts])",
+    "choices": [
+      "[True, False, False]",
+      "[False, False, False]",
+      "[True, False, True]",
+      "[True, True, False]"
+    ],
+    "answer": 0,
+    "explanation": "In an S3 bucket policy, Principal.AWS can be a list containing '*', not just the top-level string '*'. Normalizing to a list catches the wildcard alongside account '111122223333', while skipping Effect 'Deny' avoids flagging deny guardrails."
+  },
+  {
+    "id": "py-224",
+    "lang": "python",
+    "topic": "IAM policy logic",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "granted = {'s3:GetObject', 's3:PutObject', 's3:DeleteBucket'}\nused = {'s3:GetObject', 'sts:GetCallerIdentity'}\nunused = sorted(granted - used)\nunlisted = sorted(used - granted)\nprint(unused)\nprint(unlisted)",
+    "choices": [
+      "['s3:DeleteBucket', 's3:PutObject']\n['sts:GetCallerIdentity']",
+      "['s3:GetObject']\n['sts:GetCallerIdentity']",
+      "['sts:GetCallerIdentity']\n['s3:DeleteBucket', 's3:PutObject']",
+      "['s3:DeleteBucket', 's3:GetObject', 's3:PutObject']\n[]"
+    ],
+    "answer": 0,
+    "explanation": "Set difference (granted - used) returns permissions present in the policy that never appeared in audit logs, highlighting candidates to remove for least privilege. Reversing the operands (used - granted) shows actions observed in logs that came from another policy."
+  },
+  {
+    "id": "py-225",
+    "lang": "python",
+    "topic": "IAM policy logic",
+    "kind": "order",
+    "prompt": "Put the lines in order so this evaluates IAM policy statements (Deny > Allow > implicit deny).",
+    "lines": [
+      "def evaluate(stmts, act):",
+      "    hits = [s['Effect'] for s in stmts if s['Action'] == act]",
+      "    if 'Deny' in hits: return 'deny'",
+      "    if 'Allow' in hits: return 'allow'",
+      "    return 'implicit_deny'",
+      "rules = [('Allow', 's3:Get'), ('Deny', 's3:Get'), ('Allow', 's3:List')]",
+      "pol = [{'Effect': e, 'Action': a} for e, a in rules]",
+      "print(evaluate(pol, 's3:Get'), evaluate(pol, 's3:List'), evaluate(pol, 's3:Put'))"
+    ],
+    "explanation": "IAM policy evaluation collects every matching statement's Effect first, rejects immediately if any explicit Deny exists, allows only if an Allow matched, and falls back to implicit deny. Putting Allow before Deny would let 's3:Get' slip through despite the Deny.",
+    "expectOutput": "deny allow implicit_deny"
+  },
+  {
+    "id": "py-226",
+    "lang": "python",
+    "topic": "IAM policy logic",
+    "kind": "bug",
+    "prompt": "A policy with an Allow followed by a Deny for the same action returns True instead of False. Which line is the security bug?",
+    "lines": [
+      "def is_allowed(stmts, act):",
+      "    allowed = False",
+      "    for s in stmts:",
+      "        if s['Action'] == act:",
+      "            if s['Effect'] == 'Allow':",
+      "                return True",
+      "            if s['Effect'] == 'Deny':",
+      "                return False",
+      "    return allowed"
+    ],
+    "bugLine": 5,
+    "fixedLine": "                allowed = True",
+    "explanation": "Returning True on the first Allow stops the loop before later statements are inspected, missing any explicit Deny that follows. Record allowed = True instead and keep scanning so an explicit Deny can still return False."
+  },
+  {
+    "id": "py-227",
+    "lang": "python",
+    "topic": "IAM policy logic",
+    "kind": "bug",
+    "prompt": "Actions like 's3:DeleteBucket' and 's3control:DeleteJob' pass this S3 read-only check. Which line is the security bug?",
+    "lines": [
+      "def is_s3_read(action):",
+      "    if not isinstance(action, str):",
+      "        return False",
+      "    return 's3' in action"
+    ],
+    "bugLine": 3,
+    "fixedLine": "    return fnmatch.fnmatchcase(action, 's3:Get*')",
+    "explanation": "A substring check like 's3' in action matches any string containing 's3', including destructive actions like 's3:DeleteBucket' and unrelated services like 's3control'. Match the full action pattern explicitly with fnmatch.fnmatchcase(action, 's3:Get*') instead."
+  },
+  {
+    "id": "py-228",
+    "lang": "python",
+    "topic": "IAM policy logic",
+    "kind": "bug",
+    "prompt": "Requests missing the required 'mfa' context key still satisfy this StringEquals condition. Which line is the security bug?",
+    "lines": [
+      "def condition_matches(expected, ctx):",
+      "    for key, want in expected.items():",
+      "        if key in ctx and ctx[key] != want:",
+      "            return False",
+      "    return True"
+    ],
+    "bugLine": 2,
+    "fixedLine": "        if key not in ctx or ctx[key] != want:",
+    "explanation": "Guarding with 'key in ctx and ctx[key] != want' silently skips keys absent from ctx, letting requests without MFA pass the condition. Fail closed with 'if key not in ctx or ctx[key] != want:' so a missing context key never satisfies StringEquals."
+  },
+  {
+    "id": "py-229",
+    "lang": "python",
+    "topic": "Time & expiry",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "from datetime import datetime, timezone\ndt = datetime.fromtimestamp(86400 + 3600, tz=timezone.utc)\nprint(dt.isoformat())\nprint(dt.tzname(), dt.tzinfo is not None)",
+    "choices": [
+      "1970-01-02T01:00:00+00:00\nUTC True",
+      "1970-01-02T01:00:00\nNone False",
+      "1970-01-01T01:00:00+00:00\nUTC True",
+      "1970-01-02T01:00:00Z\nUTC True"
+    ],
+    "answer": 0,
+    "explanation": "Passing tz=timezone.utc to datetime.fromtimestamp() produces a timezone-aware UTC datetime rather than a naive local one. 86400 + 3600 seconds after the Unix epoch is 1970-01-02T01:00:00+00:00, and isoformat() renders UTC as +00:00 rather than Z."
+  },
+  {
+    "id": "py-230",
+    "lang": "python",
+    "topic": "Time & expiry",
+    "kind": "output",
+    "prompt": "What happens when this runs?",
+    "code": "from datetime import datetime, timezone\nnaive = datetime(2026, 6, 1, 12, 0)\naware = datetime(2026, 6, 1, 12, 0, tzinfo=timezone.utc)\nprint(naive < aware)",
+    "choices": [
+      "False",
+      "True",
+      "TypeError",
+      "ValueError"
+    ],
+    "answer": 2,
+    "explanation": "Python refuses to order a naive datetime (tzinfo=None) against a timezone-aware datetime and raises TypeError. Mixing naive timestamps from datetime.now() with aware UTC token expiries is a common runtime crash; normalize all timestamps to UTC aware datetimes.",
+    "raises": "TypeError"
+  },
+  {
+    "id": "py-231",
+    "lang": "python",
+    "topic": "Time & expiry",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "from datetime import datetime\nutc = datetime.fromisoformat('2026-06-01T00:00:00Z')\nbkk = datetime.fromisoformat('2026-06-01T07:00:00+07:00')\nprint(utc == bkk, (bkk - utc).total_seconds())\nprint(utc.isoformat())",
+    "choices": [
+      "True 0.0\n2026-06-01T00:00:00+00:00",
+      "False 25200.0\n2026-06-01T00:00:00+00:00",
+      "True 0.0\n2026-06-01T00:00:00Z",
+      "ValueError"
+    ],
+    "answer": 0,
+    "explanation": "Since Python 3.11, datetime.fromisoformat() parses trailing 'Z' as UTC alongside explicit offsets like '+07:00'. Aware datetimes compare by UTC instant, so 00:00Z and 07:00+07:00 are equal with a 0.0-second difference, while isoformat() formats UTC as +00:00."
+  },
+  {
+    "id": "py-232",
+    "lang": "python",
+    "topic": "Time & expiry",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "from datetime import datetime, timedelta, timezone\nissued = datetime(2026, 6, 1, 10, 0, tzinfo=timezone.utc)\nexp = issued + timedelta(minutes=15)\nchecks = [\n    datetime(2026, 6, 1, 10, 14, 59, tzinfo=timezone.utc),\n    datetime(2026, 6, 1, 10, 15, 0, tzinfo=timezone.utc),\n    datetime(2026, 6, 1, 10, 16, 0, tzinfo=timezone.utc),\n]\nprint([exp <= now for now in checks])",
+    "choices": [
+      "[False, True, True]",
+      "[False, False, True]",
+      "[True, True, False]",
+      "[True, False, False]"
+    ],
+    "answer": 0,
+    "explanation": "Adding timedelta(minutes=15) sets expiry to 10:15:00 UTC. Under RFC 7519, a token is already expired at the exact exp instant, so exp <= now returns True for both 10:15:00 and 10:16:00."
+  },
+  {
+    "id": "py-233",
+    "lang": "python",
+    "topic": "Time & expiry",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "from datetime import datetime, timezone\nnow = datetime(2026, 6, 3, 12, 0, tzinfo=timezone.utc)\nexp_ok = datetime(2026, 6, 4, 12, 1, tzinfo=timezone.utc)\nexp_old = datetime(2026, 6, 3, 11, 59, tzinfo=timezone.utc)\nd1 = exp_ok - now\nd2 = exp_old - now\nprint(d1.seconds, int(d1.total_seconds()))\nprint(int(d2.total_seconds()))",
+    "choices": [
+      "60 86460\n-60",
+      "86460 86460\n-60",
+      "60 86460\n60",
+      "60 86460\n86340"
+    ],
+    "answer": 0,
+    "explanation": "timedelta.seconds only holds the within-day remainder (0..86399), so it reports 60 instead of 86460 for 1 day and 1 minute. Always use total_seconds() for TTL and expiry math because it includes full days and preserves negative values when a deadline has passed."
+  },
+  {
+    "id": "py-234",
+    "lang": "python",
+    "topic": "Time & expiry",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "from datetime import datetime, timedelta, timezone\nbkk = timezone(timedelta(hours=7))\nutc_dt = datetime(2026, 6, 1, 20, 30, tzinfo=timezone.utc)\nbkk_dt = utc_dt.astimezone(bkk)\nprint(bkk_dt.isoformat())\nprint(bkk_dt == utc_dt, bkk_dt.tzname())",
+    "choices": [
+      "2026-06-02T03:30:00+07:00\nTrue UTC+07:00",
+      "2026-06-01T13:30:00+07:00\nTrue UTC+07:00",
+      "2026-06-02T03:30:00+07:00\nFalse UTC+07:00",
+      "2026-06-01T20:30:00+07:00\nFalse UTC+07:00"
+    ],
+    "answer": 0,
+    "explanation": "astimezone() shifts the clock to the target offset (+07:00 for Asia/Bangkok, which has no DST), rolling 20:30 UTC on June 1 forward to 03:30 on June 2. Because both objects represent the same instant, bkk_dt == utc_dt is True (unlike .replace(tzinfo=bkk), which would change the instant)."
+  },
+  {
+    "id": "py-235",
+    "lang": "python",
+    "topic": "Time & expiry",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "from datetime import datetime, timezone\ndt = datetime(2026, 6, 1, 12, 0, 5, 750000, tzinfo=timezone.utc)\nts = int(dt.timestamp())\nback = datetime.fromtimestamp(ts, tz=timezone.utc)\nprint(back.isoformat())\nprint(back == dt, back.microsecond)",
+    "choices": [
+      "2026-06-01T12:00:05+00:00\nFalse 0",
+      "2026-06-01T12:00:06+00:00\nFalse 0",
+      "2026-06-01T12:00:05.750000+00:00\nTrue 750000",
+      "2026-06-01T12:00:05+00:00\nTrue 0"
+    ],
+    "answer": 0,
+    "explanation": "JWT numeric dates (exp, iat, nbf) are whole seconds, so int(dt.timestamp()) truncates the 750000 microseconds rather than rounding up to :06. Round-tripping back with fromtimestamp(ts, tz=timezone.utc) restores the UTC second cleanly, but back == dt is False because microseconds were dropped."
+  },
+  {
+    "id": "py-236",
+    "lang": "python",
+    "topic": "Time & expiry",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "def ok(c, now, leeway=30):\n    return (now < c['exp'] + leeway\n            and now + leeway >= c['nbf']\n            and c['iat'] <= now + leeway)\ntoks = [\n    {'iat': 900, 'nbf': 1020, 'exp': 980},\n    {'iat': 900, 'nbf': 900, 'exp': 970},\n    {'iat': 1040, 'nbf': 1000, 'exp': 1200},\n]\nprint([ok(t, 1000) for t in toks])",
+    "choices": [
+      "[True, False, False]",
+      "[False, False, False]",
+      "[True, True, False]",
+      "[True, False, True]"
+    ],
+    "answer": 0,
+    "explanation": "A 30-second leeway tolerates minor clock skew across servers, so the first token (exp 20s ago, nbf 20s ahead) is still accepted. The second hits the exact expiry cutoff (970 + 30 == 1000), and the third has an iat 40s in the future beyond the leeway."
+  },
+  {
+    "id": "py-237",
+    "lang": "python",
+    "topic": "Time & expiry",
+    "kind": "order",
+    "prompt": "Put the lines in order so this validates required claims, checks expiry before nbf, and prints ['missing', 'expired', 'early', 'valid'].",
+    "lines": [
+      "def check_claims(c, now, leeway=30):",
+      "    if 'exp' not in c or 'nbf' not in c: return 'missing'",
+      "    if c['exp'] + leeway <= now: return 'expired'",
+      "    if now + leeway < c['nbf']: return 'early'",
+      "    return 'valid'",
+      "toks = [{}, {'nbf': 90, 'exp': 10}, {'nbf': 90, 'exp': 99}, {'nbf': 10, 'exp': 99}]",
+      "print([check_claims(t, 50, 5) for t in toks])"
+    ],
+    "explanation": "Validate that required time claims exist before reading them so missing fields do not raise KeyError. Check exp and nbf with clock-skew leeway, returning 'valid' only after all checks pass.",
+    "expectOutput": "['missing', 'expired', 'early', 'valid']"
+  },
+  {
+    "id": "py-238",
+    "lang": "python",
+    "topic": "Time & expiry",
+    "kind": "bug",
+    "prompt": "Comparing a UTC token expiry against the current time raises TypeError. Which line is the bug?",
+    "lines": [
+      "def is_expired(exp_ts):",
+      "    exp = datetime.fromtimestamp(exp_ts, tz=timezone.utc)",
+      "    now = datetime.now()",
+      "    return exp <= now"
+    ],
+    "bugLine": 2,
+    "fixedLine": "    now = datetime.now(timezone.utc)",
+    "explanation": "datetime.now() without a timezone returns a naive local datetime, which raises TypeError when compared to an aware UTC exp (and would shift with the server's local timezone even if stripped). Pass timezone.utc to datetime.now(timezone.utc) so both sides are UTC-aware."
+  },
+  {
+    "id": "py-239",
+    "lang": "python",
+    "topic": "Time & expiry",
+    "kind": "bug",
+    "prompt": "A token checked at its exact expiration second (exp_ts == now_ts) is treated as still valid. Which line is wrong?",
+    "lines": [
+      "def is_expired(exp_ts, now_ts):",
+      "    if exp_ts is None:",
+      "        return True",
+      "    return exp_ts < now_ts"
+    ],
+    "bugLine": 3,
+    "fixedLine": "    return exp_ts <= now_ts",
+    "explanation": "Using strict '<' returns False when exp_ts == now_ts, granting an extra second of validity at the expiration boundary. Under RFC 7519, a token must be rejected on or after exp, so use exp_ts <= now_ts."
+  },
+  {
+    "id": "py-240",
+    "lang": "python",
+    "topic": "Time & expiry",
+    "kind": "bug",
+    "prompt": "Comparing '2026-9-5' against '2026-10-1' returns False because '9' sorts after '1'. Which line is wrong?",
+    "lines": [
+      "def is_past_deadline(exp_str, now_str):",
+      "    fmt = '%Y-%m-%d'",
+      "    if not exp_str or not now_str:",
+      "        return True",
+      "    return exp_str <= now_str"
+    ],
+    "bugLine": 4,
+    "fixedLine": "    return datetime.strptime(exp_str, fmt) <= datetime.strptime(now_str, fmt)",
+    "explanation": "Lexicographical string comparison only matches chronological order for zero-padded ISO dates (YYYY-MM-DD); without padding, '2026-9-5' sorts after '2026-10-1'. Parse both strings into datetime objects with datetime.strptime() before comparing."
+  },
+  {
     "id": "py-058",
     "lang": "python",
     "topic": "CTF toolbox",
