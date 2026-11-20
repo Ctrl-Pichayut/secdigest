@@ -168,6 +168,16 @@ async function waitForWrite(writes, startIndex, predicate, timeoutMs, descriptio
   );
 }
 
+function parseInParamIds(idParam) {
+  if (typeof idParam !== 'string') return null;
+  const match = /^in\.\((.*)\)$/.exec(idParam);
+  if (!match) return null;
+  return match[1]
+    .split(',')
+    .map((value) => value.trim().replace(/^"|"$/g, ''))
+    .filter(Boolean);
+}
+
 async function swipeCard(page, locator, direction) {
   await locator.evaluate((el) => el.scrollIntoView({ block: 'center', behavior: 'instant' }));
   await page.waitForTimeout(50);
@@ -451,7 +461,7 @@ async function main() {
       pageErrors.push(err instanceof Error ? err.message : String(err));
     });
 
-    await context.route(SUPABASE_GLOB, async (route) => {
+    const handleSupabaseRoute = async (route) => {
       const req = route.request();
       const method = req.method().toUpperCase();
       const url = new URL(req.url());
@@ -539,7 +549,25 @@ async function main() {
         headers: { ...corsHeaders, 'content-type': 'application/json' },
         body: JSON.stringify({ error: 'Not Found', method, path: url.pathname }),
       });
-    });
+    };
+    await context.route(SUPABASE_GLOB, handleSupabaseRoute);
+
+    // Playwright's clock is shared by every page in a browser context, so checks that install a fake
+    // clock get their own context. Otherwise later pages inherit frozen timers and animation frames.
+    const newIsolatedPage = async () => {
+      const isolatedContext = await browser.newContext({
+        viewport: VIEWPORT,
+        hasTouch: true,
+        isMobile: true,
+        serviceWorkers: 'block',
+      });
+      await isolatedContext.route(SUPABASE_GLOB, handleSupabaseRoute);
+      const isolatedPage = await isolatedContext.newPage();
+      isolatedPage.on('close', () => {
+        isolatedContext.close().catch(() => {});
+      });
+      return isolatedPage;
+    };
 
     let checkedFeedOverflow = false;
     let checkedPracticeOverflow = false;
@@ -743,7 +771,7 @@ async function main() {
     await runCheck(
       'Auto-refresh on visibilitychange after 30+ minutes triggers a new GET /rest/v1/news_items',
       async () => {
-        const resumePage = await context.newPage();
+        const resumePage = await newIsolatedPage();
         const resumeConsoleErrors = [];
         const resumePageErrors = [];
 
@@ -820,6 +848,198 @@ async function main() {
         }
       }
     );
+
+    await runCheck(
+      'Mark all read shows undo snackbar above BottomNav at 360x780 and Undo restores unread cards',
+      async () => {
+        const undoPage = await context.newPage();
+        const undoConsoleErrors = [];
+        const undoPageErrors = [];
+
+        undoPage.on('console', (msg) => {
+          if (msg.type() === 'error') {
+            const text = msg.text();
+            if (!isIgnoredConsoleError(text)) {
+              undoConsoleErrors.push(text);
+            }
+          }
+        });
+
+        undoPage.on('pageerror', (err) => {
+          undoPageErrors.push(err instanceof Error ? err.message : String(err));
+        });
+
+        try {
+          await undoPage.setViewportSize({ width: 360, height: 780 });
+          await undoPage.goto(`${BASE_URL}/`, { waitUntil: 'networkidle', timeout: 15000 });
+          await undoPage.locator('[data-testid^="news-card-"]').first().waitFor({
+            state: 'visible',
+            timeout: 10000,
+          });
+
+          const initialUnreadCount = await undoPage.locator('[data-testid^="news-card-"]').count();
+          if (initialUnreadCount !== 4) {
+            throw new Error(
+              `Expected 4 unread cards before mark all read, found ${initialUnreadCount}`
+            );
+          }
+
+          await undoPage.locator('[data-testid="btn-mark-all-read"]').click();
+
+          const snackbar = undoPage.locator('[data-testid="undo-snackbar"]');
+          await snackbar.waitFor({ state: 'visible', timeout: 5000 });
+
+          const expectedLabel = `Marked ${initialUnreadCount} items as read`;
+          const snackbarText = (await snackbar.textContent()) || '';
+          if (!snackbarText.includes(expectedLabel)) {
+            throw new Error(
+              `Expected snackbar text to include "${expectedLabel}", got "${snackbarText.trim()}"`
+            );
+          }
+
+          await undoPage.waitForFunction(
+            () => document.querySelectorAll('[data-testid^="news-card-"]').length === 0,
+            undefined,
+            { timeout: 5000 }
+          );
+
+          // Wait for enter animation to settle before measuring layout geometry.
+          await undoPage.waitForTimeout(300);
+
+          const snackbarBox = await snackbar.boundingBox();
+          const navBox = await undoPage.locator('nav[aria-label="Primary"]').boundingBox();
+          if (!snackbarBox || !navBox) {
+            throw new Error(
+              `Could not measure bounding boxes (snackbar=${JSON.stringify(snackbarBox)}, nav=${JSON.stringify(navBox)})`
+            );
+          }
+
+          const intersects =
+            snackbarBox.x < navBox.x + navBox.width &&
+            snackbarBox.x + snackbarBox.width > navBox.x &&
+            snackbarBox.y < navBox.y + navBox.height &&
+            snackbarBox.y + snackbarBox.height > navBox.y;
+          if (intersects) {
+            throw new Error(
+              `Undo snackbar intersects BottomNav at 360x780: snackbar=${JSON.stringify(snackbarBox)}, nav=${JSON.stringify(navBox)}`
+            );
+          }
+          if (snackbarBox.y + snackbarBox.height > navBox.y) {
+            throw new Error(
+              `Expected undo snackbar to sit above BottomNav at 360x780 (snackbarBottom=${snackbarBox.y + snackbarBox.height}, navTop=${navBox.y})`
+            );
+          }
+          if (
+            snackbarBox.x < -MAX_RIGHT_OVERFLOW_PX ||
+            snackbarBox.x + snackbarBox.width > 360 + MAX_RIGHT_OVERFLOW_PX
+          ) {
+            throw new Error(
+              `Undo snackbar overflows 360px viewport: ${JSON.stringify(snackbarBox)}`
+            );
+          }
+
+          const expectedIds = ['news-1', 'news-2', 'news-3', 'news-4'];
+          const writesBeforeUndo = recordedWrites.length;
+          await snackbar.getByRole('button', { name: 'Undo' }).click();
+
+          await waitForWrite(
+            recordedWrites,
+            writesBeforeUndo,
+            (w) => {
+              if (
+                w.method !== 'PATCH' ||
+                w.pathname !== '/rest/v1/news_items' ||
+                !w.body ||
+                w.body.is_read !== false
+              ) {
+                return false;
+              }
+              const ids = parseInParamIds(w.searchParams.id);
+              return (
+                Array.isArray(ids) &&
+                ids.length === expectedIds.length &&
+                expectedIds.every((id) => ids.includes(id))
+              );
+            },
+            5000,
+            'PATCH /rest/v1/news_items with is_read=false for undone ids'
+          );
+
+          await undoPage.waitForFunction(
+            () => document.querySelectorAll('[data-testid^="news-card-"]').length === 4,
+            undefined,
+            { timeout: 5000 }
+          );
+
+          await snackbar.waitFor({ state: 'detached', timeout: 5000 });
+
+          if (undoConsoleErrors.length > 0 || undoPageErrors.length > 0) {
+            throw new Error(
+              `Console/page errors detected during undo check: ${JSON.stringify({
+                consoleErrors: undoConsoleErrors,
+                pageErrors: undoPageErrors,
+              })}`
+            );
+          }
+        } finally {
+          await undoPage.close();
+        }
+      }
+    );
+
+    await runCheck('Undo snackbar auto-dismisses after 6 seconds', async () => {
+      const autoDismissPage = await newIsolatedPage();
+      const autoDismissConsoleErrors = [];
+      const autoDismissPageErrors = [];
+
+      autoDismissPage.on('console', (msg) => {
+        if (msg.type() === 'error') {
+          const text = msg.text();
+          if (!isIgnoredConsoleError(text)) {
+            autoDismissConsoleErrors.push(text);
+          }
+        }
+      });
+
+      autoDismissPage.on('pageerror', (err) => {
+        autoDismissPageErrors.push(err instanceof Error ? err.message : String(err));
+      });
+
+      try {
+        await autoDismissPage.goto(`${BASE_URL}/`, { waitUntil: 'networkidle', timeout: 15000 });
+        await autoDismissPage.locator('[data-testid^="news-card-"]').first().waitFor({
+          state: 'visible',
+          timeout: 10000,
+        });
+
+        await autoDismissPage.locator('[data-testid="btn-read-news-1"]').click();
+
+        const snackbar = autoDismissPage.locator('[data-testid="undo-snackbar"]');
+        await snackbar.waitFor({ state: 'visible', timeout: 5000 });
+
+        const snackbarText = (await snackbar.textContent()) || '';
+        if (!snackbarText.includes('Marked as read')) {
+          throw new Error(
+            `Expected single-item snackbar text "Marked as read", got "${snackbarText.trim()}"`
+          );
+        }
+
+        // Real time on purpose: a fake clock does not reliably drive framer-motion exit animations.
+        await autoDismissPage.waitForTimeout(6500);
+        await snackbar.waitFor({ state: 'detached', timeout: 5000 });
+
+        if (autoDismissConsoleErrors.length > 0 || autoDismissPageErrors.length > 0) {
+          throw new Error(
+            `Console/page errors detected during undo auto-dismiss check: ${JSON.stringify({
+              consoleErrors: autoDismissConsoleErrors,
+              pageErrors: autoDismissPageErrors,
+            })}`
+          );
+        }
+      } finally {
+        await autoDismissPage.close();
+      }
+    });
 
     await runCheck('Practice page renders progress, Next up chip, streak panel, and starts 2-minute session', async () => {
       await page.goto(`${BASE_URL}/practice`, { waitUntil: 'networkidle', timeout: 15000 });

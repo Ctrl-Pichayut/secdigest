@@ -3081,6 +3081,397 @@
     "explanation": "Every comparison with NaN evaluates to False, so 'pct < 0 or pct > 50' does not catch float('nan'). Check math.isfinite(pct) and invert a positive bounds check (not (0 <= pct <= 50)) so NaN and infinities are always rejected."
   },
   {
+    "id": "py-193",
+    "lang": "python",
+    "topic": "Serialization & tokens",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import json\na = {'b': 2, 'a': 1}\nb = {'a': 1, 'b': 2}\ns1 = json.dumps(a)\ns2 = json.dumps(a, sort_keys=True, separators=(',', ':'))\ns3 = json.dumps(b, sort_keys=True, separators=(',', ':'))\nprint(s1)\nprint(s2, s2 == s3)",
+    "choices": [
+      "{\"b\": 2, \"a\": 1}\n{\"a\":1,\"b\":2} True",
+      "{\"a\": 1, \"b\": 2}\n{\"a\":1,\"b\":2} True",
+      "{\"b\": 2, \"a\": 1}\n{\"a\": 1, \"b\": 2} True",
+      "{\"b\": 2, \"a\": 1}\n{\"b\":2,\"a\":1} False"
+    ],
+    "answer": 0,
+    "explanation": "Default json.dumps() keeps dict insertion order and inserts spaces after commas and colons, so equivalent dicts serialize to different bytes. Passing sort_keys=True and separators=(',', ':') produces one canonical string so HMACs and signatures match across senders."
+  },
+  {
+    "id": "py-194",
+    "lang": "python",
+    "topic": "Serialization & tokens",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import json, math\nbig = json.loads('9007199254740993')\nhuge = json.loads('1e400')\nprint(big == 2**53 + 1, type(big).__name__)\nprint(huge, math.isinf(huge))",
+    "choices": [
+      "True int\ninf True",
+      "False int\ninf True",
+      "True float\ninf True",
+      "True int\nOverflowError"
+    ],
+    "answer": 0,
+    "explanation": "Python's json.loads() parses integer tokens into arbitrary-precision ints, preserving values beyond IEEE 754's 2**53 safe integer limit. Numbers with an exponent parse as 64-bit floats, so 1e400 silently overflows to inf; validate untrusted JSON floats with math.isfinite()."
+  },
+  {
+    "id": "py-195",
+    "lang": "python",
+    "topic": "Serialization & tokens",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import json\nacl = {1: 'user', '1': 'admin'}\nwire = json.dumps(acl)\nback = json.loads(wire)\nprint(wire)\nprint(len(acl), len(back), back['1'])",
+    "choices": [
+      "{\"1\": \"user\", \"1\": \"admin\"}\n2 1 admin",
+      "{\"1\": \"user\", \"1\": \"admin\"}\n2 1 user",
+      "{1: \"user\", \"1\": \"admin\"}\n2 2 admin",
+      "TypeError"
+    ],
+    "answer": 0,
+    "explanation": "JSON object keys must be strings, so json.dumps() silently converts int key 1 to \"1\", emitting duplicate keys in the output. Round-tripping through json.loads() keeps only the last value ('admin'), dropping the earlier entry; avoid mixing key types in dicts you serialize."
+  },
+  {
+    "id": "py-196",
+    "lang": "python",
+    "topic": "Serialization & tokens",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import base64\nraw = b'\\xfb\\xfe'\nstd = base64.b64encode(raw).decode()\ntok = base64.urlsafe_b64encode(raw).rstrip(b'=').decode()\npad = '=' * (-len(tok) % 4)\nout = base64.urlsafe_b64decode(tok + pad)\nprint(std, tok, out == raw)",
+    "choices": [
+      "+/4= -_4 True",
+      "+/4= -_4= True",
+      "+/4= +/4 True",
+      "+/4= -_4 False"
+    ],
+    "answer": 0,
+    "explanation": "urlsafe_b64encode() swaps '+' and '/' for '-' and '_' so tokens do not break URLs, and formats like JWT strip trailing '=' padding. Python's urlsafe_b64decode() still requires a multiple of 4 characters, so adding '=' * (-len(tok) % 4) restores padding cleanly for decoding."
+  },
+  {
+    "id": "py-197",
+    "lang": "python",
+    "topic": "Serialization & tokens",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import base64, binascii\na = base64.b64decode('a!G!k=')\ntry:\n    b = base64.b64decode('a!G!k=', validate=True)\nexcept binascii.Error:\n    b = 'rejected'\nprint(a, b)",
+    "choices": [
+      "b'hi' rejected",
+      "b'hi' b'hi'",
+      "rejected rejected",
+      "b'hi' b'h!i'"
+    ],
+    "answer": 0,
+    "explanation": "By default, base64.b64decode() silently discards non-Base64 characters like '!', so different token strings can decode to the same bytes. Passing validate=True raises binascii.Error on any invalid character, preventing token-smuggling and cache-key mismatches."
+  },
+  {
+    "id": "py-198",
+    "lang": "python",
+    "topic": "Serialization & tokens",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import base64, json\ndef dec(seg):\n    pad = seg + '=' * (-len(seg) % 4)\n    return json.loads(base64.urlsafe_b64decode(pad))\ntok = 'eyJhbGciOiJub25lIn0.eyJzdWIiOiJhbm4ifQ.'\nh, p, sig = tok.split('.')\nprint(dec(h)['alg'], dec(p)['sub'], sig == '')",
+    "choices": [
+      "none ann True",
+      "none ann False",
+      "ValueError",
+      "HS256 ann False"
+    ],
+    "answer": 0,
+    "explanation": "A JWT is three dot-separated URL-safe Base64 segments (header, payload, signature), and decoding the first two reveals plaintext JSON without verifying authenticity. Here the header sets alg to 'none' with an empty signature; production verifiers must enforce an allowed algorithm before trusting claims."
+  },
+  {
+    "id": "py-199",
+    "lang": "python",
+    "topic": "Serialization & tokens",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import hmac\nkey = b'demo-key'\na = hmac.new(key, b'uid=42', 'sha256').hexdigest()\nb = hmac.digest(key, b'uid=42', 'sha256').hex()\nc = hmac.new(key, b'uid=43', 'sha256').hexdigest()\nprint(len(a), a == b, a == c)",
+    "choices": [
+      "64 True False",
+      "32 True False",
+      "64 False False",
+      "64 True True"
+    ],
+    "answer": 0,
+    "explanation": "HMAC-SHA256 is deterministic: the same key and message always produce the same 64-character hex tag whether computed via hmac.new().hexdigest() or one-shot hmac.digest().hex(). Changing even one byte of the message produces a completely different digest."
+  },
+  {
+    "id": "py-200",
+    "lang": "python",
+    "topic": "Serialization & tokens",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import hmac, json\ndef sign(s):\n    return hmac.new(b'demo', s.encode(), 'sha256').hexdigest()\na, b = ('ann:admin', 'x'), ('ann', 'admin:x')\nraw_eq = sign(':'.join(a)) == sign(':'.join(b))\nj_eq = sign(json.dumps(a)) == sign(json.dumps(b))\nprint(raw_eq, j_eq)",
+    "choices": [
+      "True False",
+      "False False",
+      "True True",
+      "False True"
+    ],
+    "answer": 0,
+    "explanation": "Joining untrusted fields with ':' lets ('ann:admin', 'x') and ('ann', 'admin:x') produce the exact same signed bytes, allowing signature reuse across field boundaries. Serializing fields as canonical JSON preserves structure so each tuple gets a distinct MAC."
+  },
+  {
+    "id": "py-201",
+    "lang": "python",
+    "topic": "Serialization & tokens",
+    "kind": "order",
+    "prompt": "Put the lines in order so this verifies the signature before parsing JSON and prints viewer.",
+    "lines": [
+      "import hmac, json",
+      "def load_signed(key, payload, sig):",
+      "    expected = hmac.new(key, payload, 'sha256').hexdigest()",
+      "    if not hmac.compare_digest(expected, sig):",
+      "        raise ValueError('bad sig')",
+      "    return json.loads(payload)",
+      "raw = b'{\"role\":\"viewer\"}'",
+      "tag = hmac.new(b'k', raw, 'sha256').hexdigest()",
+      "print(load_signed(b'k', raw, tag)['role'])"
+    ],
+    "explanation": "Always verify the HMAC over the raw bytes in constant time before calling json.loads(). This verify-then-parse order rejects tampered data before the parser runs and avoids mismatches between parsed objects and signed bytes.",
+    "expectOutput": "viewer"
+  },
+  {
+    "id": "py-202",
+    "lang": "python",
+    "topic": "Serialization & tokens",
+    "kind": "bug",
+    "prompt": "This token check leaks timing clues about the MAC signature. Which line is the security bug?",
+    "lines": [
+      "def verify_session(token, secret):",
+      "    body, sig = token.rsplit('.', 1)",
+      "    expected = hmac.new(secret, body.encode(), 'sha256').hexdigest()",
+      "    if sig != expected:",
+      "        return False",
+      "    return True"
+    ],
+    "bugLine": 3,
+    "fixedLine": "    if not hmac.compare_digest(sig, expected):",
+    "explanation": "!= and == short-circuit on the first differing character, so response timing can leak the expected HMAC byte by byte. Use hmac.compare_digest(sig, expected) to compare tags in constant time."
+  },
+  {
+    "id": "py-203",
+    "lang": "python",
+    "topic": "Serialization & tokens",
+    "kind": "bug",
+    "prompt": "cookie_b64 comes from an untrusted browser cookie and allows code execution. Which line is the security bug?",
+    "lines": [
+      "def decode_cookie(cookie_b64):",
+      "    pad = cookie_b64 + '=' * (-len(cookie_b64) % 4)",
+      "    raw = base64.urlsafe_b64decode(pad)",
+      "    return pickle.loads(raw)"
+    ],
+    "bugLine": 3,
+    "fixedLine": "    return json.loads(raw)",
+    "explanation": "pickle.loads() executes arbitrary Python callables embedded in crafted bytes during deserialization. For untrusted tokens or cookies, deserialize data-only JSON with json.loads() after verifying a signature."
+  },
+  {
+    "id": "py-204",
+    "lang": "python",
+    "topic": "Serialization & tokens",
+    "kind": "bug",
+    "prompt": "Parsing an untrusted YAML policy here can run arbitrary Python code. Which line is the security bug?",
+    "lines": [
+      "def parse_config(raw_yaml):",
+      "    if len(raw_yaml) > 8192:",
+      "        raise ValueError('config too large')",
+      "    return yaml.load(raw_yaml, Loader=yaml.Loader)"
+    ],
+    "bugLine": 3,
+    "fixedLine": "    return yaml.safe_load(raw_yaml)",
+    "explanation": "yaml.load() with yaml.Loader (or UnsafeLoader) resolves Python object tags that execute arbitrary code during parsing. Always use yaml.safe_load() when loading untrusted YAML."
+  },
+  {
+    "id": "py-205",
+    "lang": "python",
+    "topic": "Secrets & log hygiene",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import re\nline = 'Authorization: Bearer tok_demo99 password=hunter2 ok=1'\ns = re.sub(r'(Bearer )\\S+', r'\\1[REDACTED]', line)\ns = re.sub(r'(password=)\\S+', r'\\1[REDACTED]', s)\nprint(s)",
+    "choices": [
+      "Authorization: Bearer [REDACTED] password=[REDACTED] ok=1",
+      "Authorization: [REDACTED] [REDACTED] ok=1",
+      "Authorization: Bearer [REDACTED] password=hunter2 ok=1",
+      "Authorization: Bearer \\1[REDACTED] password=\\1[REDACTED] ok=1"
+    ],
+    "answer": 0,
+    "explanation": "Capturing the label ('Bearer ' or 'password=') and referencing it with \\1 replaces only the secret value while keeping the field name intact for debugging. Applying both patterns scrubs credentials before the log line leaves the process."
+  },
+  {
+    "id": "py-206",
+    "lang": "python",
+    "topic": "Secrets & log hygiene",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "def mask_tail(secret):\n    if len(secret) <= 4:\n        return '*' * len(secret)\n    return '*' * (len(secret) - 4) + secret[-4:]\n\nprint(mask_tail('key_9876'), mask_tail('ab12'))",
+    "choices": [
+      "****9876 ****",
+      "****9876 ab12",
+      "key_**** ****",
+      "****_9876 ****"
+    ],
+    "answer": 0,
+    "explanation": "Keeping only the last 4 characters lets operators distinguish keys during rotation without exposing the secret value. Guarding len(secret) <= 4 ensures short secrets are fully masked instead of returned in plaintext."
+  },
+  {
+    "id": "py-207",
+    "lang": "python",
+    "topic": "Secrets & log hygiene",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "from dataclasses import dataclass, field\n@dataclass\nclass Creds:\n    user: str\n    token: str = field(repr=False)\nc = Creds('ann', 'tok_demo_1')\nprint(repr(c), c.token)",
+    "choices": [
+      "Creds(user='ann') tok_demo_1",
+      "Creds(user='ann', token='tok_demo_1') tok_demo_1",
+      "Creds(user='ann', token='***') tok_demo_1",
+      "Creds(user='ann') None"
+    ],
+    "answer": 0,
+    "explanation": "By default, @dataclass generates a __repr__ that prints every field, which leaks secrets whenever an instance lands in logs or tracebacks. Setting field(repr=False) hides token from repr() while keeping c.token accessible to code that needs it."
+  },
+  {
+    "id": "py-208",
+    "lang": "python",
+    "topic": "Secrets & log hygiene",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import logging\nrec = logging.makeLogRecord({\n    'levelname': 'WARNING',\n    'msg': 'denied user=%s ip=%s',\n    'args': ('ann', '192.0.2.10'),\n})\nfmt = logging.Formatter('%(levelname)s %(message)s')\nprint(rec.msg)\nprint(fmt.format(rec))",
+    "choices": [
+      "denied user=%s ip=%s\nWARNING denied user=ann ip=192.0.2.10",
+      "denied user=ann ip=192.0.2.10\nWARNING denied user=ann ip=192.0.2.10",
+      "denied user=%s ip=%s\nWARNING denied user=%s ip=%s",
+      "TypeError"
+    ],
+    "answer": 0,
+    "explanation": "With %-style logging, the LogRecord stores the raw template in rec.msg and defers formatting until Formatter.format() calls rec.getMessage(). Lazy formatting avoids unnecessary work when a level is disabled and lets filters scrub rec.args first."
+  },
+  {
+    "id": "py-209",
+    "lang": "python",
+    "topic": "Secrets & log hygiene",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "from urllib.parse import urlsplit, urlunsplit\nu = urlsplit('https://ann:hunter2@api.example.com:8443/v1?p=2')\nhost = f'{u.hostname}:{u.port}' if u.port else u.hostname\nsafe = urlunsplit((u.scheme, host, u.path, u.query, ''))\nprint(u.username, safe)",
+    "choices": [
+      "ann https://api.example.com:8443/v1?p=2",
+      "ann https://ann:hunter2@api.example.com:8443/v1?p=2",
+      "ann:hunter2 https://api.example.com:8443/v1?p=2",
+      "ann https://api.example.com/v1?p=2"
+    ],
+    "answer": 0,
+    "explanation": "urlsplit() separates hostname and port from netloc, letting you rebuild the URL with urlunsplit() minus any embedded user:password@ userinfo. Stripping userinfo before logging keeps basic-auth and DSN credentials out of log aggregators."
+  },
+  {
+    "id": "py-210",
+    "lang": "python",
+    "topic": "Secrets & log hygiene",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import secrets\na = secrets.token_hex(16)\nb = secrets.token_hex(32)\nhex_ok = set(a) <= set('0123456789abcdef')\nprint(len(a), len(b), hex_ok)",
+    "choices": [
+      "32 64 True",
+      "16 32 True",
+      "32 64 False",
+      "16 64 True"
+    ],
+    "answer": 0,
+    "explanation": "secrets.token_hex(n) draws n random bytes from the OS CSPRNG and encodes them as 2 * n lowercase hex characters. Passing 16 yields 128 bits (32 hex chars) and 32 yields 256 bits (64 hex chars), suitable for API keys and session tokens."
+  },
+  {
+    "id": "py-211",
+    "lang": "python",
+    "topic": "Secrets & log hygiene",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "import re\ndsn = 'postgres://user:hunter2@db.test/app'\npat = r'(://[^:@\\s]+:)[^@\\s]+(@)'\ntry:\n    raise ConnectionError(f'db down: {dsn}')\nexcept ConnectionError as exc:\n    print(re.sub(pat, r'\\1***\\2', str(exc)))",
+    "choices": [
+      "db down: postgres://user:***@db.test/app",
+      "db down: postgres://***:***@db.test/app",
+      "db down: postgres://user:hunter2@db.test/app",
+      "db down: postgres://***@db.test/app"
+    ],
+    "answer": 0,
+    "explanation": "Database drivers often embed the full connection string in exception messages, leaking passwords into error logs and tracebacks. Redacting the password between ':' and '@' preserves the scheme, user, and host for debugging without exposing credentials."
+  },
+  {
+    "id": "py-212",
+    "lang": "python",
+    "topic": "Secrets & log hygiene",
+    "kind": "output",
+    "prompt": "What does this print?",
+    "code": "user = 'ann\\r\\nINFO login=admin'\nraw = f'FAIL user={user}'\nsafe = f'FAIL user={user!r}'\nprint(len(raw.splitlines()), len(safe.splitlines()))\nprint(safe)",
+    "choices": [
+      "2 1\nFAIL user='ann\\r\\nINFO login=admin'",
+      "1 1\nFAIL user='ann\\r\\nINFO login=admin'",
+      "2 2\nFAIL user=ann\nINFO login=admin",
+      "2 1\nFAIL user=ann\\r\\nINFO login=admin"
+    ],
+    "answer": 0,
+    "explanation": "Logging raw user input lets embedded \\r\\n characters forge fake log lines (CRLF log injection). Formatting untrusted strings with !r escapes control characters via repr() so the entry stays on a single line."
+  },
+  {
+    "id": "py-213",
+    "lang": "python",
+    "topic": "Secrets & log hygiene",
+    "kind": "order",
+    "prompt": "Put the lines in order for a safe error-reporting path that scrubs secrets and returns a generic client reply.",
+    "lines": [
+      "import re",
+      "def safe_reply(err_id, exc):",
+      "    raw = f'{type(exc).__name__}: {exc}'",
+      "    redacted = re.sub(r'secret=\\S+', 'secret=***', raw)",
+      "    internal = f'[{err_id}] {redacted}'",
+      "    return f'{internal} | client: err {err_id}'",
+      "print(safe_reply('E9', ValueError('bad secret=demo123')))"
+    ],
+    "explanation": "A safe error path formats the exception internally, redacts secrets before tagging it with a correlation ID, and returns only a generic error reference to the client. That lets operators investigate failures without leaking stack details or credentials.",
+    "expectOutput": "[E9] ValueError: bad secret=*** | client: err E9"
+  },
+  {
+    "id": "py-214",
+    "lang": "python",
+    "topic": "Secrets & log hygiene",
+    "kind": "bug",
+    "prompt": "Attackers can predict password-reset tokens generated here. Which line is the security bug?",
+    "lines": [
+      "def make_reset_link(base_url):",
+      "    token = f'{random.getrandbits(128):032x}'",
+      "    return f'{base_url}/reset?t={token}'"
+    ],
+    "bugLine": 1,
+    "fixedLine": "    token = secrets.token_hex(16)",
+    "explanation": "Even at 128 bits, Python's random module uses Mersenne Twister, whose state can be recovered to predict future tokens. Generate security tokens with secrets.token_hex(16) (or secrets.token_urlsafe()), backed by the OS CSPRNG."
+  },
+  {
+    "id": "py-215",
+    "lang": "python",
+    "topic": "Secrets & log hygiene",
+    "kind": "bug",
+    "prompt": "Bearer tokens and session cookies end up in debug logs here. Which line is the security bug?",
+    "lines": [
+      "def handle_request(method, path, headers):",
+      "    logger.debug(f'req {method} {path} headers={headers}')",
+      "    if path == '/health':",
+      "        return 200",
+      "    return 404"
+    ],
+    "bugLine": 1,
+    "fixedLine": "    logger.debug('req %s %s', method, path)",
+    "explanation": "Logging the full request headers dict writes Authorization and Cookie secrets to logs, and an f-string formats them eagerly even when DEBUG is off. Log only non-sensitive metadata with %-style lazy formatting."
+  },
+  {
+    "id": "py-216",
+    "lang": "python",
+    "topic": "Secrets & log hygiene",
+    "kind": "bug",
+    "prompt": "Committing this code exposes a production credential in source control. Which line is the security bug?",
+    "lines": [
+      "def build_auth_header():",
+      "    api_key = 'demo-placeholder-key'",
+      "    return {'Authorization': f'Bearer {api_key}'}"
+    ],
+    "bugLine": 1,
+    "fixedLine": "    api_key = os.environ['API_KEY']",
+    "explanation": "Hard-coding API keys in source files leaks them to git history, CI logs, and anyone with repo access, while complicating key rotation. Load secrets at runtime from os.environ['API_KEY'] or a dedicated secret manager."
+  },
+  {
     "id": "py-058",
     "lang": "python",
     "topic": "CTF toolbox",

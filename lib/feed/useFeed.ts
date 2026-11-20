@@ -19,8 +19,19 @@ import {
   mergeAndSortNewsItems,
 } from '@/lib/feed/helpers';
 
+export interface PendingUndo {
+  ids: string[];
+  label: string;
+  key: number;
+}
+
+function buildUndoLabel(count: number): string {
+  return count === 1 ? 'Marked as read' : `Marked ${count} items as read`;
+}
+
 export function useFeed() {
   const [items, setItems] = useState<NewsItem[]>([]);
+  const [pendingUndo, setPendingUndo] = useState<PendingUndo | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [hasLoaded, setHasLoaded] = useState<boolean>(false);
   const [successfulLoadCount, setSuccessfulLoadCount] = useState<number>(0);
@@ -43,6 +54,8 @@ export function useFeed() {
   const lastLoadFailedRef = useRef<boolean>(false);
   const inFlightRef = useRef<boolean>(false);
   const hasActiveSearchQueryRef = useRef<boolean>(false);
+  const undoKeyRef = useRef<number>(0);
+  const handledUndoKeyRef = useRef<number | null>(null);
 
   // Populate time-dependent greeting, date, day headers, and freshness only after
   // mount so prerendered HTML matches the initial client render (avoids hydration #418).
@@ -300,11 +313,21 @@ export function useFeed() {
   // Optimistic Read Toggle
   const handleToggleRead = async (id: string, currentState: boolean) => {
     const nextState = !currentState;
+    const undoKey = nextState ? ++undoKeyRef.current : null;
+
     setItems((prev) =>
       prev.map((item) =>
         item.id === id ? { ...item, is_read: nextState } : item
       )
     );
+
+    if (undoKey !== null) {
+      setPendingUndo({
+        ids: [id],
+        label: buildUndoLabel(1),
+        key: undoKey,
+      });
+    }
 
     try {
       const { error: updateError } = await supabase
@@ -321,6 +344,9 @@ export function useFeed() {
           item.id === id ? { ...item, is_read: currentState } : item
         )
       );
+      if (undoKey !== null) {
+        setPendingUndo((prev) => (prev && prev.key === undoKey ? null : prev));
+      }
     }
   };
 
@@ -340,12 +366,18 @@ export function useFeed() {
     if (unreadFiltered.length === 0) return;
 
     const unreadIds = unreadFiltered.map((i) => i.id);
+    const undoKey = ++undoKeyRef.current;
 
     setItems((prev) =>
       prev.map((item) =>
         unreadIds.includes(item.id) ? { ...item, is_read: true } : item
       )
     );
+    setPendingUndo({
+      ids: unreadIds,
+      label: buildUndoLabel(unreadIds.length),
+      key: undoKey,
+    });
 
     try {
       const { error: updateError } = await supabase
@@ -356,9 +388,47 @@ export function useFeed() {
       if (updateError) throw updateError;
     } catch (err) {
       console.error('Failed to mark all as read:', err);
+      setPendingUndo((prev) => (prev && prev.key === undoKey ? null : prev));
       loadNews();
     }
   };
+
+  const dismissUndo = useCallback(() => {
+    setPendingUndo(null);
+  }, []);
+
+  const handleUndo = useCallback(async () => {
+    if (!pendingUndo || handledUndoKeyRef.current === pendingUndo.key) return;
+    handledUndoKeyRef.current = pendingUndo.key;
+
+    const readIdSet = new Set(
+      items.filter((item) => item.is_read).map((item) => item.id)
+    );
+    const idsToRestore = pendingUndo.ids.filter((id) => readIdSet.has(id));
+
+    setPendingUndo(null);
+
+    if (idsToRestore.length === 0) return;
+
+    const restoreSet = new Set(idsToRestore);
+    setItems((prev) =>
+      prev.map((item) =>
+        restoreSet.has(item.id) ? { ...item, is_read: false } : item
+      )
+    );
+
+    try {
+      const { error: updateError } = await supabase
+        .from('news_items')
+        .update({ is_read: false })
+        .in('id', idsToRestore);
+
+      if (updateError) throw updateError;
+    } catch (err) {
+      console.error('Failed to undo read status in Supabase:', err);
+      loadNews();
+    }
+  }, [pendingUndo, items, loadNews]);
 
   const unreadItems = useMemo(
     () => filteredItems.filter((i) => !i.is_read),
@@ -465,5 +535,8 @@ export function useFeed() {
     handleToggleBookmark,
     handleToggleRead,
     handleMarkAllRead,
+    pendingUndo,
+    handleUndo,
+    dismissUndo,
   };
 }

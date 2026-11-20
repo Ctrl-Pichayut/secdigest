@@ -33,6 +33,7 @@ export const MS_PER_DAY = 24 * 60 * 60 * 1000;
 export const MAX_CONSECUTIVE_EMPTY_PAGES = 2;
 export const AUTO_REFRESH_STALE_MS = 30 * 60 * 1000;
 export const SEARCH_DEBOUNCE_MS = 150;
+export const UNDO_SNACKBAR_DURATION_MS = 6000;
 
 export type NavigatorWithBadge = Navigator & {
   setAppBadge?: (contents?: number) => Promise<void>;

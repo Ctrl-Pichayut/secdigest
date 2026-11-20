@@ -16,6 +16,7 @@ import EmptyState from '@/components/feed/EmptyState';
 import FeedList from '@/components/feed/FeedList';
 import ReadDrawer from '@/components/feed/ReadDrawer';
 import LoadOlderFooter from '@/components/feed/LoadOlderFooter';
+import UndoSnackbar from '@/components/feed/UndoSnackbar';
 
 export default function HomePage() {
   const feed = useFeed();
@@ -41,7 +42,7 @@ export default function HomePage() {
       }`}
     >
       <div
-        className={`max-w-md mx-auto min-h-screen flex flex-col pb-28 transition-colors duration-200 ${
+        className={`max-w-md mx-auto min-h-screen flex flex-col pb-36 transition-colors duration-200 ${
           isDusk
             ? 'bg-[#1E1B29] text-[#EAE6F2] selection:bg-purple-900'
             : 'bg-[#E5DFD3] text-[#2A2623] selection:bg-amber-200'
@@ -175,6 +176,14 @@ export default function HomePage() {
             )}
         </main>
       </div>
+
+      <UndoSnackbar
+        pendingUndo={feed.pendingUndo}
+        isDusk={isDusk}
+        focusRingClass={focusRingClass}
+        onUndo={feed.handleUndo}
+        onDismiss={feed.dismissUndo}
+      />
     </div>
   );
 }
