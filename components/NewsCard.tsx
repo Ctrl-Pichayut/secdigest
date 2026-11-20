@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   motion,
   AnimatePresence,
@@ -10,8 +10,9 @@ import {
   useReducedMotion,
   animate,
 } from 'framer-motion';
-import { ExternalLink, Bookmark, CheckCircle2 } from 'lucide-react';
+import { ExternalLink, Bookmark, CheckCircle2, ShieldAlert } from 'lucide-react';
 import { NewsItem } from '@/lib/types';
+import { extractCveIds, nvdUrl } from '@/lib/feed/cve';
 import { type TextSize } from '@/lib/feed/useTextSize';
 import {
   BrainIcon,
@@ -29,6 +30,7 @@ import {
 
 const SWIPE_THRESHOLD_RATIO = 0.35;
 const SWIPE_MAX_DRAG_PX = 240;
+const MAX_VISIBLE_CVE_CHIPS = 3;
 
 function hasTextSelectionIn(container: HTMLElement | null): boolean {
   if (typeof window === 'undefined' || typeof window.getSelection !== 'function') {
@@ -58,6 +60,7 @@ const TEXT_SIZE_CLASSES: Record<
   {
     title: string;
     meta: string;
+    chip: string;
     tldr: string;
     takeaway: string;
   }
@@ -65,18 +68,21 @@ const TEXT_SIZE_CLASSES: Record<
   sm: {
     title: 'text-[17px] leading-snug',
     meta: 'text-[11px] sm:text-xs leading-tight',
+    chip: 'text-[11px] leading-none',
     tldr: 'text-xs sm:text-sm leading-relaxed',
     takeaway: 'text-xs sm:text-[13px] leading-relaxed',
   },
   md: {
     title: 'text-[19px] leading-snug',
     meta: 'text-xs sm:text-[13px] leading-snug',
+    chip: 'text-xs leading-none',
     tldr: 'text-sm sm:text-base leading-relaxed',
     takeaway: 'text-sm sm:text-[15px] leading-relaxed',
   },
   lg: {
     title: 'text-[21px] leading-snug',
     meta: 'text-[13px] sm:text-sm leading-snug',
+    chip: 'text-[13px] leading-none',
     tldr: 'text-base sm:text-lg leading-relaxed',
     takeaway: 'text-base sm:text-[17px] leading-relaxed',
   },
@@ -194,6 +200,25 @@ export default function NewsCard({
   const relativeAge = mounted ? formatRelativeAge(item.created_at) : null;
   const hasThai = Boolean(item.tldr_th);
   const isBreaking = Boolean(item.is_breaking);
+  const cveIds = useMemo(
+    () =>
+      extractCveIds(
+        item.title,
+        item.tldr,
+        item.actionable_value,
+        item.tldr_th,
+        item.actionable_value_th
+      ),
+    [
+      item.title,
+      item.tldr,
+      item.actionable_value,
+      item.tldr_th,
+      item.actionable_value_th,
+    ]
+  );
+  const visibleCveIds = cveIds.slice(0, MAX_VISIBLE_CVE_CHIPS);
+  const overflowCveCount = Math.max(0, cveIds.length - MAX_VISIBLE_CVE_CHIPS);
 
   useEffect(() => {
     setMounted(true);
@@ -652,6 +677,48 @@ export default function NewsCard({
             >
               {relativeAge}
             </time>
+          )}
+        </div>
+      )}
+
+      {/* CVE Advisory Chips */}
+      {cveIds.length > 0 && (
+        <div
+          data-testid={`cve-chips-${item.id}`}
+          className="flex flex-wrap items-center gap-1.5 mb-3"
+        >
+          {visibleCveIds.map((cveId) => (
+            <a
+              key={cveId}
+              href={nvdUrl(cveId)}
+              target="_blank"
+              rel="noopener noreferrer"
+              data-testid={`cve-chip-${cveId}`}
+              aria-label={`Open ${cveId} on NVD`}
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
+              className={`inline-flex items-center gap-1.5 min-h-[32px] px-2.5 py-1 rounded-full font-mono font-semibold border whitespace-nowrap max-w-full transition-colors touch-manipulation ${sizeClasses.chip} ${focusRingClass} ${
+                isDusk
+                  ? 'bg-rose-950/65 text-rose-200 border-rose-700/55 hover:bg-rose-950/90 hover:border-rose-500/70 hover:text-rose-100'
+                  : 'bg-[#E8CFC2]/80 text-[#5C2E1B] border-[#D9B7A6] hover:bg-[#DFBFB0] hover:border-[#C99F8B]'
+              }`}
+            >
+              <ShieldAlert aria-hidden="true" className="w-3.5 h-3.5 shrink-0" />
+              <span>{cveId}</span>
+            </a>
+          ))}
+          {overflowCveCount > 0 && (
+            <span
+              data-testid={`cve-overflow-${item.id}`}
+              aria-label={`${overflowCveCount} more CVEs`}
+              className={`inline-flex items-center justify-center min-h-[32px] px-2.5 py-1 rounded-full font-mono font-semibold border whitespace-nowrap ${sizeClasses.chip} ${
+                isDusk
+                  ? 'bg-rose-950/40 text-rose-300/90 border-rose-800/50'
+                  : 'bg-[#E8CFC2]/55 text-[#5C2E1B]/85 border-[#D9B7A6]/80'
+              }`}
+            >
+              +{overflowCveCount}
+            </span>
           )}
         </div>
       )}

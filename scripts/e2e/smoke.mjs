@@ -59,8 +59,8 @@ function buildNewsFixtures(now) {
       id: 'news-1',
       source_id: 'openssh-advisory-2026',
       category: 'CVE_SECURITY',
-      title: 'Critical OpenSSH Pre-Auth Remote Code Execution Patch Released',
-      tldr: 'OpenSSH maintainers published an emergency security update addressing a signal handler race condition affecting default server builds.',
+      title: 'Critical OpenSSH Pre-Auth Remote Code Execution Patch Released (CVE-2026-114938)',
+      tldr: 'OpenSSH maintainers published an emergency security update for CVE-2026-114938 and CVE-2026-20411 addressing a signal handler race condition affecting default server builds.',
       actionable_value: 'Upgrade openssh-server packages across bastion hosts and verify sshd version 9.8p1 or newer.',
       url: 'https://www.openssh.com/security.html',
       event_start_date: null,
@@ -636,6 +636,68 @@ async function main() {
       const text = (await freshness.textContent())?.trim() || '';
       if (!text.startsWith('Updated')) {
         throw new Error(`Expected freshness line to start with "Updated", got "${text}"`);
+      }
+    });
+
+    await runCheck('CVE chips render deduped with NVD links and omit row when no CVE is present', async () => {
+      const cveCard = page.locator('[data-testid="news-card-news-1"]');
+      await cveCard.waitFor({ state: 'visible', timeout: 5000 });
+
+      const chipRow = cveCard.locator('[data-testid="cve-chips-news-1"]');
+      await chipRow.waitFor({ state: 'visible', timeout: 5000 });
+
+      const chips = cveCard.locator('[data-testid^="cve-chip-"]');
+      const chipCount = await chips.count();
+      if (chipCount !== 2) {
+        throw new Error(`Expected 2 deduplicated CVE chips on news-1, found ${chipCount}`);
+      }
+
+      const expectedCves = ['CVE-2026-114938', 'CVE-2026-20411'];
+      for (let i = 0; i < expectedCves.length; i += 1) {
+        const expectedId = expectedCves[i];
+        const chip = chips.nth(i);
+        const testId = await chip.getAttribute('data-testid');
+        if (testId !== `cve-chip-${expectedId}`) {
+          throw new Error(
+            `Expected chip #${i + 1} data-testid to be "cve-chip-${expectedId}", got "${testId}"`
+          );
+        }
+
+        const text = (await chip.textContent())?.trim() || '';
+        if (text !== expectedId) {
+          throw new Error(`Expected chip #${i + 1} text to be "${expectedId}", got "${text}"`);
+        }
+
+        const href = await chip.getAttribute('href');
+        const expectedHref = `https://nvd.nist.gov/vuln/detail/${expectedId}`;
+        if (href !== expectedHref) {
+          throw new Error(
+            `Expected chip ${expectedId} href to be "${expectedHref}", got "${href}"`
+          );
+        }
+
+        const target = await chip.getAttribute('target');
+        if (target !== '_blank') {
+          throw new Error(`Expected chip ${expectedId} target to be "_blank", got "${target}"`);
+        }
+
+        const rel = await chip.getAttribute('rel');
+        if (!rel || !rel.includes('noopener') || !rel.includes('noreferrer')) {
+          throw new Error(
+            `Expected chip ${expectedId} rel to include "noopener noreferrer", got "${rel}"`
+          );
+        }
+      }
+
+      const nonCveCard = page.locator('[data-testid="news-card-news-2"]');
+      await nonCveCard.waitFor({ state: 'visible', timeout: 5000 });
+      const nonCveRowCount = await nonCveCard.locator('[data-testid^="cve-chips-"]').count();
+      if (nonCveRowCount !== 0) {
+        throw new Error(`Expected no CVE chip row on news-2, found ${nonCveRowCount}`);
+      }
+      const nonCveChipCount = await nonCveCard.locator('[data-testid^="cve-chip-"]').count();
+      if (nonCveChipCount !== 0) {
+        throw new Error(`Expected 0 CVE chips on news-2, found ${nonCveChipCount}`);
       }
     });
 
